@@ -197,7 +197,7 @@ function Dashboard() {
           <div className="dashboard-head">
             <div>
               <p className="eyebrow">Secure dashboard</p>
-              <h1>{authMode === 'signup' ? 'Create your account' : 'Sign in to view your cases'}</h1>
+              <h1>{authMode === 'signup' ? 'Create Account' : 'Sign In'}</h1>
             </div>
           </div>
 
