@@ -38,6 +38,10 @@ export async function uploadFile({
   caseId,
 }: FileUploadParams): Promise<FileUploadResponse> {
   try {
+    if (!userId || !caseId) {
+      throw new Error('Missing user or case id for file upload.');
+    }
+
     const fileName = `${generateFileUuid()}${extensionFor(file.name)}`;
     const relativePath = `${cleanSegment(userId)}/${cleanSegment(caseId)}/${fileName}`;
     const fullPath = storagePath(bucket, relativePath);

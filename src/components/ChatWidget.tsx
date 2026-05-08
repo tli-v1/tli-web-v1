@@ -1,10 +1,37 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  createCase,
+  createCaseContact,
+  createDamages,
+  createDocument,
+  createIncident,
+  createParties,
+  deleteCase,
+} from '../api/intake'
+import { ensureUserProfile } from '../api/userProfile'
+import {
+  applyIntakeAnswerAndAdvance,
+  buildIntakeSummary,
+  emptyChatIntakeDraft,
+  getInitialIntakeQuestion,
+  getIntakeQuestion,
+  getNextIntakeStep,
+  isChatIntakeComplete,
+  isIntakeRequest,
+  type ChatIntakeDraft,
+  type ChatIntakeStep,
+} from '../agent/intakeFlow'
+import { analyzeImageRelevance, canAnalyzeImage } from '../agent/fileRelevance'
 import type { User } from '../types'
 import {
   minervaModel,
   saveMinervaExchange,
   type MinervaChatMessage,
 } from '../agent/initialize'
+import { isCaseIntakeRelevant, offTopicMessage } from '../agent/relevance'
+import { removeFiles, uploadFile } from '../storage/fileUpload'
+import { useVoiceInput } from '../hooks/useVoiceInput'
 
 interface Message {
   id: string
@@ -21,7 +48,7 @@ interface ChatWidgetProps {
 
 const welcomeMessageId = 'minerva-welcome'
 const defaultInitialMessage =
-  "Hi, I'm Minerva. I can help answer general legal questions and point you toward useful next steps. What's going on?"
+  "Hi, I'm Minerva! I'm here to help you get started with your case. \n\n Before we begin: you're chatting with an automated assistant, not a licensed attorney. Your information is stored in a secure, HIPAA-compliant system and will never be sold or shared outside the matching process. \n What brings you here today?"
 
 export function ChatWidget(props: ChatWidgetProps) {
   const { user, initialMessage, variant = 'embedded' } = props
@@ -37,7 +64,15 @@ export function ChatWidget(props: ChatWidgetProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [isOpen, setIsOpen] = useState(true)
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [intakeDraft, setIntakeDraft] = useState<ChatIntakeDraft>(emptyChatIntakeDraft)
+  const [intakeStep, setIntakeStep] = useState<ChatIntakeStep | null>(null)
+  const [intakeAwaitingAccount, setIntakeAwaitingAccount] = useState(false)
+  const [intakeSubmitting, setIntakeSubmitting] = useState(false)
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([])
+  const [filesAnalyzing, setFilesAnalyzing] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const pendingSubmitRef = useRef(false)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -47,8 +82,206 @@ export function ChatWidget(props: ChatWidgetProps) {
     scrollToBottom()
   }, [messages])
 
+  const appendAssistantMessage = useCallback((content: string) => {
+    const assistantMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content,
+      timestamp: new Date(),
+    }
+    setMessages((prev) => [...prev, assistantMessage])
+    return assistantMessage
+  }, [])
+
+  const handleVoiceTranscript = useCallback((transcript: string) => {
+    setInput((prev) => `${prev}${prev.trim() ? ' ' : ''}${transcript}`.trim())
+  }, [])
+
+  const handleVoiceError = useCallback((message: string) => {
+    appendAssistantMessage(message)
+  }, [appendAssistantMessage])
+
+  const voiceInput = useVoiceInput({
+    onTranscript: handleVoiceTranscript,
+    onError: handleVoiceError,
+  })
+
+  const resetIntake = useCallback(() => {
+    setIntakeDraft(emptyChatIntakeDraft)
+    setIntakeStep(null)
+    setIntakeAwaitingAccount(false)
+    setAttachedFiles([])
+    pendingSubmitRef.current = false
+  }, [])
+
+  const submitChatIntake = useCallback(async (draft: ChatIntakeDraft, submittingUser: User) => {
+    setIntakeSubmitting(true)
+    let createdCaseId = ''
+    const uploadedStoragePaths: string[] = []
+
+    try {
+      await ensureUserProfile({
+        userId: submittingUser.id,
+        fullName: draft.fullName,
+        phone: draft.phone,
+        role: 'client',
+      })
+
+      const { data: caseData, error: caseError } = await createCase({
+        userId: submittingUser.id,
+        consentStore: draft.consentProcess,
+        consentContact: draft.consentContact,
+      })
+      if (caseError || !caseData) throw new Error(caseError || 'Unable to create case.')
+      createdCaseId = caseData.id
+
+      const [incidentResult, damagesResult, contactResult, partiesResult] = await Promise.all([
+        createIncident({
+          case_id: createdCaseId,
+          description: draft.whatHappened,
+          incident_date: draft.incidentDate,
+          city: draft.city,
+          state_code: draft.state,
+        }),
+        createDamages({
+          case_id: createdCaseId,
+          medical_bills_usd: Number(draft.medicalBills) || 0,
+          days_missed: Number(draft.daysMissed) || 0,
+          daily_rate_usd: Number(draft.dailyRate) || 0,
+        }),
+        createCaseContact({
+          case_id: createdCaseId,
+          full_name: draft.fullName,
+          method: draft.preferredContact,
+          email: draft.email,
+          phone: draft.phone || null,
+        }),
+        createParties([
+          {
+            case_id: createdCaseId,
+            role: 'defendant',
+            name: draft.adverseParty || 'Unknown party',
+          },
+          ...(draft.insurerName && draft.insurerName !== 'None'
+            ? [
+                {
+                  case_id: createdCaseId,
+                  role: 'insurer',
+                  name: draft.insurerName,
+                  insurer_name: draft.insurerName,
+                  policy_number: draft.policyNumber || null,
+                  claim_number: draft.claimNumber || null,
+                },
+              ]
+            : []),
+        ]),
+      ])
+
+      const firstError =
+        incidentResult.error || damagesResult.error || contactResult.error || partiesResult.error
+      if (firstError) throw new Error(firstError)
+
+      for (const file of attachedFiles) {
+        const { path, error: storageError } = await uploadFile({
+          bucket: 'case-docs',
+          file,
+          userId: submittingUser.id,
+          caseId: createdCaseId,
+        })
+        if (storageError || !path) throw new Error(storageError || 'Unable to upload file.')
+        uploadedStoragePaths.push(path)
+
+        const { error: documentError } = await createDocument({
+          case_id: createdCaseId,
+          kind: documentKindFor(file),
+          original_filename: file.name,
+          storage_path: `case-docs/${path}`,
+          uploaded_by: submittingUser.id,
+        })
+        if (documentError) throw new Error(documentError)
+      }
+
+      const fileNote = attachedFiles.length ? ` I also uploaded ${attachedFiles.length} file${attachedFiles.length === 1 ? '' : 's'}.` : ''
+      appendAssistantMessage(`Your intake has been submitted. Case ID: ${createdCaseId}.${fileNote}`)
+      resetIntake()
+    } catch (error) {
+      if (createdCaseId) {
+        await deleteCase(createdCaseId)
+      }
+      if (uploadedStoragePaths.length) {
+        await removeFiles('case-docs', uploadedStoragePaths)
+      }
+      appendAssistantMessage(error instanceof Error ? error.message : 'Unable to submit your intake.')
+    } finally {
+      setIntakeSubmitting(false)
+    }
+  }, [appendAssistantMessage, attachedFiles, resetIntake])
+
+  useEffect(() => {
+    if (
+      !user
+      || !intakeAwaitingAccount
+      || !isChatIntakeComplete(intakeDraft)
+      || intakeSubmitting
+      || pendingSubmitRef.current
+    ) return
+
+    pendingSubmitRef.current = true
+    appendAssistantMessage('You are signed in now. I am submitting your intake.')
+    setIntakeAwaitingAccount(false)
+    submitChatIntake(intakeDraft, user).finally(() => {
+      pendingSubmitRef.current = false
+    })
+  }, [appendAssistantMessage, intakeAwaitingAccount, intakeDraft, intakeSubmitting, submitChatIntake, user])
+
+  const handleAttachFiles = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || [])
+    if (!files.length) return
+    event.target.value = ''
+
+    setFilesAnalyzing(true)
+    const acceptedFiles: File[] = []
+    const rejectedFiles: string[] = []
+
+    try {
+      for (const file of files) {
+        if (!canAnalyzeImage(file)) {
+          acceptedFiles.push(file)
+          continue
+        }
+
+        const review = await analyzeImageRelevance(file)
+        if (review.relevant) {
+          acceptedFiles.push(file)
+          continue
+        }
+
+        rejectedFiles.push(`${file.name}: ${review.reason}`)
+      }
+
+      if (acceptedFiles.length) {
+        setAttachedFiles((prev) => [...prev, ...acceptedFiles])
+        if (intakeStep === 'documents') {
+          setIntakeDraft((prev) => ({ ...prev, authorizeDocuments: true }))
+        }
+      }
+
+      if (rejectedFiles.length) {
+        appendAssistantMessage(`I did not attach ${rejectedFiles.length === 1 ? 'that image' : 'those images'} because ${rejectedFiles.join('; ')}. Please upload documents, photos, or evidence connected to the case.`)
+      } else if (acceptedFiles.some((file) => canAnalyzeImage(file))) {
+        appendAssistantMessage(`I reviewed and attached ${acceptedFiles.length} file${acceptedFiles.length === 1 ? '' : 's'} for this intake.`)
+      }
+    } finally {
+      setFilesAnalyzing(false)
+    }
+  }
+
+  const removeAttachedFile = (indexToRemove: number) => {
+    setAttachedFiles((prev) => prev.filter((_, index) => index !== indexToRemove))
+  }
+
   const sendMessage = async () => {
-    if (!input.trim() || isLoading) return
+    if (!input.trim() || isLoading || intakeSubmitting || filesAnalyzing) return
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -61,6 +294,60 @@ export function ChatWidget(props: ChatWidgetProps) {
 
     setMessages(nextMessages)
     setInput('')
+
+    const activeIntakeStep = intakeStep ?? (isIntakeRequest(userMessage.content) ? 'whatHappened' : null)
+    if (activeIntakeStep) {
+      if (!intakeStep && /^(start|begin|create|submit)/i.test(userMessage.content.trim())) {
+        setIntakeStep('whatHappened')
+        appendAssistantMessage(getInitialIntakeQuestion())
+        return
+      }
+
+      const result = applyIntakeAnswerAndAdvance(intakeDraft, activeIntakeStep, userMessage.content, {
+        attachedFileCount: attachedFiles.length,
+      })
+      setIntakeDraft(result.draft)
+
+      if (!result.accepted) {
+        setIntakeStep(activeIntakeStep)
+        appendAssistantMessage(result.message || getIntakeQuestion(activeIntakeStep))
+        return
+      }
+
+      const nextStep = getNextIntakeStep(result.draft)
+      if (nextStep) {
+        setIntakeStep(nextStep)
+        appendAssistantMessage(getIntakeQuestion(nextStep))
+        return
+      }
+
+      setIntakeStep(null)
+      const summary = buildIntakeSummary(result.draft)
+      const attachmentSummary = attachedFiles.length
+        ? `\nFiles attached: ${attachedFiles.map((file) => file.name).join(', ')}`
+        : ''
+      if (!user) {
+        setIntakeAwaitingAccount(true)
+        appendAssistantMessage(`${summary}${attachmentSummary}\n\nTo submit this, create an account or sign in from the dashboard. Once you are signed in, I will automatically create the case and upload the attached files. Keep this tab open while you sign in so the files stay attached.`)
+        return
+      }
+
+      appendAssistantMessage(`${summary}${attachmentSummary}\n\nSubmitting this intake now.`)
+      await submitChatIntake(result.draft, user)
+      return
+    }
+
+    if (!isCaseIntakeRelevant(userMessage.content)) {
+      const assistantMessage: Message = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: offTopicMessage,
+        timestamp: new Date(),
+      }
+      setMessages([...nextMessages, assistantMessage])
+      return
+    }
+
     setIsLoading(true)
 
     try {
@@ -284,13 +571,103 @@ export function ChatWidget(props: ChatWidgetProps) {
               borderTop: '1px solid #e5e7eb',
             }}
           >
+            {intakeAwaitingAccount && !user && (
+              <Link
+                to="/dashboard"
+                style={{
+                  display: 'block',
+                  marginBottom: '12px',
+                  color: '#1a73e8',
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                }}
+              >
+                Create account or sign in to submit
+              </Link>
+            )}
+            {(intakeStep === 'documents' || attachedFiles.length > 0) && (
+              <div style={{ marginBottom: '12px' }}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.jpg,.jpeg,.png,.heic,.zip"
+                  onChange={handleAttachFiles}
+                  style={{ display: 'none' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={intakeSubmitting || filesAnalyzing}
+                  style={{
+                    border: '1px solid #d1d5db',
+                    borderRadius: '8px',
+                    backgroundColor: '#fff',
+                    color: '#1f2937',
+                    cursor: intakeSubmitting || filesAnalyzing ? 'not-allowed' : 'pointer',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    padding: '8px 12px',
+                  }}
+                >
+                  {filesAnalyzing ? 'Reviewing files...' : 'Attach files'}
+                </button>
+                {attachedFiles.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                    {attachedFiles.map((file, index) => (
+                      <button
+                        key={`${file.name}-${file.lastModified}-${index}`}
+                        type="button"
+                        onClick={() => removeAttachedFile(index)}
+                        disabled={intakeSubmitting || filesAnalyzing}
+                        title="Remove file"
+                        style={{
+                          border: '1px solid #dbe2ea',
+                          borderRadius: '999px',
+                          backgroundColor: '#f8fafc',
+                          color: '#334155',
+                          cursor: intakeSubmitting || filesAnalyzing ? 'not-allowed' : 'pointer',
+                          fontSize: '12px',
+                          padding: '5px 9px',
+                        }}
+                      >
+                        {file.name} x
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={voiceInput.toggle}
+                disabled={!voiceInput.supported || isLoading || intakeSubmitting || filesAnalyzing}
+                title={voiceInput.supported ? 'Voice mode' : 'Voice input is not supported in this browser'}
+                aria-label={voiceInput.enabled ? 'Turn off voice mode' : 'Turn on voice mode'}
+                aria-pressed={voiceInput.enabled}
+                style={{
+                  width: '44px',
+                  minWidth: '44px',
+                  height: '44px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  backgroundColor: voiceInput.enabled ? '#fee2e2' : '#fff',
+                  color: voiceInput.enabled ? '#b91c1c' : '#1f2937',
+                  cursor: voiceInput.supported && !isLoading && !intakeSubmitting && !filesAnalyzing ? 'pointer' : 'not-allowed',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                }}
+              >
+                {voiceInput.enabled ? 'Stop' : 'Voice'}
+              </button>
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Ask Minerva..."
-                disabled={isLoading}
+                disabled={isLoading || intakeSubmitting || filesAnalyzing}
                 style={{
                   flex: 1,
                   padding: '12px',
@@ -306,16 +683,16 @@ export function ChatWidget(props: ChatWidgetProps) {
               />
               <button
                 onClick={sendMessage}
-                disabled={!input.trim() || isLoading}
+                disabled={!input.trim() || isLoading || intakeSubmitting || filesAnalyzing}
                 style={{
                   padding: '12px 24px',
-                  backgroundColor: input.trim() && !isLoading ? '#1a73e8' : '#d1d5db',
+                  backgroundColor: input.trim() && !isLoading && !intakeSubmitting && !filesAnalyzing ? '#1a73e8' : '#d1d5db',
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
                   fontSize: '14px',
                   fontWeight: 600,
-                  cursor: input.trim() && !isLoading ? 'pointer' : 'not-allowed',
+                  cursor: input.trim() && !isLoading && !intakeSubmitting && !filesAnalyzing ? 'pointer' : 'not-allowed',
                   transition: 'background-color 0.2s',
                 }}
               >
@@ -334,4 +711,12 @@ function toMinervaMessage(message: Message): MinervaChatMessage {
     role: message.role,
     content: message.content,
   }
+}
+
+function documentKindFor(file: File): string {
+  if (file.type.startsWith('image/')) return 'photos'
+  const name = file.name.toLowerCase()
+  if (name.includes('police')) return 'police_report'
+  if (name.includes('medical') || name.includes('bill') || name.includes('er')) return 'er_bill'
+  return 'other'
 }
