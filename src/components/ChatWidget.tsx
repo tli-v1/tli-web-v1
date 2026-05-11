@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
-import { LucideMic, LucideMicOff } from 'lucide-react'
+import { LucideMaximize2, LucideMic, LucideMicOff, LucideMinimize2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
   createCase,
@@ -51,6 +51,17 @@ const welcomeMessageId = 'minerva-welcome'
 const minervaDisclaimer = "This is an automated assistant, not a licensed attorney."
 const defaultInitialMessage =
   "Hi, I'm Minerva! \n\nI'm here to help you get started on your case. What brings you here today?\n\n"
+const minervaTheme = {
+  navy: '#1a2f5f',
+  navyDark: '#0f1d3c',
+  navySoft: '#27447f',
+  gold: '#f6b400',
+  page: '#f5f7fb',
+  border: '#dbe3f0',
+  muted: '#4b5563',
+  danger: '#b91c1c',
+  dangerSoft: '#fee2e2',
+}
 
 export function ChatWidget(props: ChatWidgetProps) {
   const { user, initialMessage, variant = 'embedded' } = props
@@ -65,6 +76,7 @@ export function ChatWidget(props: ChatWidgetProps) {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isOpen, setIsOpen] = useState(variant !== 'floating')
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [intakeDraft, setIntakeDraft] = useState<ChatIntakeDraft>(emptyChatIntakeDraft)
   const [intakeStep, setIntakeStep] = useState<ChatIntakeStep | null>(null)
@@ -437,11 +449,11 @@ export function ChatWidget(props: ChatWidgetProps) {
           padding: '14px 18px',
           borderRadius: '999px',
           border: 'none',
-          backgroundColor: '#1a73e8',
+          backgroundColor: minervaTheme.navySoft,
           color: 'white',
           fontSize: '14px',
           fontWeight: 700,
-          boxShadow: '0 12px 30px rgba(26,115,232,0.3)',
+          boxShadow: '0 12px 30px rgba(15, 29, 60, 0.28)',
           cursor: 'pointer',
         }}
       >
@@ -450,7 +462,7 @@ export function ChatWidget(props: ChatWidgetProps) {
     )
   }
 
-  const containerStyle =
+  const defaultContainerStyle =
     variant === 'floating'
       ? {
           position: 'fixed' as const,
@@ -465,7 +477,7 @@ export function ChatWidget(props: ChatWidgetProps) {
           display: 'flex',
           flexDirection: 'column' as const,
           overflow: 'hidden',
-          border: '1px solid #e5e7eb',
+          border: `1px solid ${minervaTheme.border}`,
         }
       : {
           width: '100%',
@@ -479,8 +491,28 @@ export function ChatWidget(props: ChatWidgetProps) {
           display: 'flex',
           flexDirection: 'column' as const,
           overflow: 'hidden',
-          border: '1px solid #e5e7eb',
+          border: `1px solid ${minervaTheme.border}`,
         }
+
+  const containerStyle = isFullscreen
+    ? {
+        position: 'fixed' as const,
+        inset: 0,
+        zIndex: 1000,
+        width: '100vw',
+        height: '100dvh',
+        minHeight: 0,
+        maxWidth: 'none',
+        margin: 0,
+        backgroundColor: 'white',
+        borderRadius: 0,
+        boxShadow: 'none',
+        display: 'flex',
+        flexDirection: 'column' as const,
+        overflow: 'hidden',
+        border: 'none',
+      }
+    : defaultContainerStyle
 
   return (
     <>
@@ -492,7 +524,7 @@ export function ChatWidget(props: ChatWidgetProps) {
           <div
             style={{
               padding: '16px 20px',
-              backgroundColor: '#1a73e8',
+              backgroundColor: minervaTheme.navySoft,
               color: 'white',
               display: 'flex',
               justifyContent: 'space-between',
@@ -505,25 +537,55 @@ export function ChatWidget(props: ChatWidgetProps) {
                 Legal Assistant
               </p>
             </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              aria-label="Close chat"
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'white',
-                fontSize: '24px',
-                cursor: 'pointer',
-                padding: '0',
-                width: '32px',
-                height: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              x
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button
+                type="button"
+                onClick={() => setIsFullscreen((prev) => !prev)}
+                aria-label={isFullscreen ? 'Exit fullscreen chat' : 'Open fullscreen chat'}
+                title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'white',
+                  cursor: 'pointer',
+                  padding: '0',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '8px',
+                }}
+              >
+                {isFullscreen ? (
+                  <LucideMinimize2 aria-hidden="true" width={19} height={19} strokeWidth={2.25} />
+                ) : (
+                  <LucideMaximize2 aria-hidden="true" width={19} height={19} strokeWidth={2.25} />
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  setIsFullscreen(false)
+                  setIsOpen(false)
+                }}
+                aria-label="Close chat"
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'white',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  padding: '0',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                x
+              </button>
+            </div>
           </div>
 
           <div
@@ -531,7 +593,7 @@ export function ChatWidget(props: ChatWidgetProps) {
               flex: 1,
               overflowY: 'auto',
               padding: '20px',
-              backgroundColor: '#f9fafb',
+              backgroundColor: minervaTheme.page,
             }}
           >
             {messages.map((message) => (
@@ -548,9 +610,10 @@ export function ChatWidget(props: ChatWidgetProps) {
                     maxWidth: '70%',
                     padding: '12px 16px',
                     borderRadius: '12px',
-                    backgroundColor: message.role === 'user' ? '#1a73e8' : 'white',
-                    color: message.role === 'user' ? 'white' : '#1f2937',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                    backgroundColor: message.role === 'user' ? minervaTheme.navy : 'white',
+                    color: message.role === 'user' ? 'white' : minervaTheme.navyDark,
+                    border: message.role === 'user' ? 'none' : `1px solid ${minervaTheme.border}`,
+                    boxShadow: '0 1px 2px rgba(15, 29, 60, 0.06)',
                   }}
                 >
                   <p style={{ margin: 0, fontSize: '14px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{message.content}</p>
@@ -579,7 +642,7 @@ export function ChatWidget(props: ChatWidgetProps) {
                           margin: 0,
                           fontSize: '11px',
                           lineHeight: '1.3',
-                          color: '#6b7280',
+                          color: minervaTheme.muted,
                           textAlign: 'right',
                         }}
                       >
@@ -597,10 +660,11 @@ export function ChatWidget(props: ChatWidgetProps) {
                     padding: '12px 16px',
                     borderRadius: '12px',
                     backgroundColor: 'white',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                    border: `1px solid ${minervaTheme.border}`,
+                    boxShadow: '0 1px 2px rgba(15, 29, 60, 0.06)',
                   }}
                 >
-                  <p style={{ margin: 0, fontSize: '14px', color: '#6b7280' }}>Typing...</p>
+                  <p style={{ margin: 0, fontSize: '14px', color: minervaTheme.muted }}>Typing...</p>
                 </div>
               </div>
             )}
@@ -611,7 +675,7 @@ export function ChatWidget(props: ChatWidgetProps) {
             style={{
               padding: '16px 20px',
               backgroundColor: 'white',
-              borderTop: '1px solid #e5e7eb',
+              borderTop: `1px solid ${minervaTheme.border}`,
             }}
           >
             {intakeAwaitingAccount && !user && (
@@ -620,7 +684,7 @@ export function ChatWidget(props: ChatWidgetProps) {
                 style={{
                   display: 'block',
                   marginBottom: '12px',
-                  color: '#1a73e8',
+                  color: minervaTheme.navy,
                   fontSize: '14px',
                   fontWeight: 700,
                   textDecoration: 'none',
@@ -644,10 +708,10 @@ export function ChatWidget(props: ChatWidgetProps) {
                   onClick={() => fileInputRef.current?.click()}
                   disabled={intakeSubmitting || filesAnalyzing}
                   style={{
-                    border: '1px solid #d1d5db',
+                    border: `1px solid ${minervaTheme.border}`,
                     borderRadius: '8px',
                     backgroundColor: '#fff',
-                    color: '#1f2937',
+                    color: minervaTheme.navyDark,
                     cursor: intakeSubmitting || filesAnalyzing ? 'not-allowed' : 'pointer',
                     fontSize: '13px',
                     fontWeight: 700,
@@ -666,10 +730,10 @@ export function ChatWidget(props: ChatWidgetProps) {
                         disabled={intakeSubmitting || filesAnalyzing}
                         title="Remove file"
                         style={{
-                          border: '1px solid #dbe2ea',
+                          border: `1px solid ${minervaTheme.border}`,
                           borderRadius: '999px',
-                          backgroundColor: '#f8fafc',
-                          color: '#334155',
+                          backgroundColor: minervaTheme.page,
+                          color: minervaTheme.navySoft,
                           cursor: intakeSubmitting || filesAnalyzing ? 'not-allowed' : 'pointer',
                           fontSize: '12px',
                           padding: '5px 9px',
@@ -694,10 +758,10 @@ export function ChatWidget(props: ChatWidgetProps) {
                   width: '44px',
                   minWidth: '44px',
                   height: '44px',
-                  border: '1px solid #d1d5db',
+                  border: `1px solid ${minervaTheme.border}`,
                   borderRadius: '8px',
-                  backgroundColor: voiceInput.enabled ? '#fee2e2' : '#fff',
-                  color: voiceInput.enabled ? '#b91c1c' : '#1f2937',
+                  backgroundColor: voiceInput.enabled ? minervaTheme.dangerSoft : '#fff',
+                  color: voiceInput.enabled ? minervaTheme.danger : minervaTheme.navyDark,
                   cursor: voiceInput.supported && !isLoading && !intakeSubmitting && !filesAnalyzing ? 'pointer' : 'not-allowed',
                   fontSize: '12px',
                   fontWeight: 700,
@@ -712,7 +776,7 @@ export function ChatWidget(props: ChatWidgetProps) {
                     aria-hidden="true"
                     width={20}
                     height={20}
-                    color="#b91c1c"
+                    color={minervaTheme.danger}
                     strokeWidth={2.25}
                     style={{ display: 'block', width: '20px', height: '20px', minWidth: '20px' }}
                   />
@@ -721,7 +785,7 @@ export function ChatWidget(props: ChatWidgetProps) {
                     aria-hidden="true"
                     width={20}
                     height={20}
-                    color="#1f2937"
+                    color={minervaTheme.navyDark}
                     strokeWidth={2.25}
                     style={{ display: 'block', width: '20px', height: '20px', minWidth: '20px' }}
                   />
@@ -738,7 +802,7 @@ export function ChatWidget(props: ChatWidgetProps) {
                   flex: 1,
                   minHeight: '44px',
                   padding: '11px 12px',
-                  border: '1px solid #d1d5db',
+                  border: `1px solid ${minervaTheme.border}`,
                   borderRadius: '8px',
                   fontSize: '14px',
                   lineHeight: '20px',
@@ -754,8 +818,8 @@ export function ChatWidget(props: ChatWidgetProps) {
                 disabled={!input.trim() || isLoading || intakeSubmitting || filesAnalyzing}
                 style={{
                   padding: '12px 24px',
-                  backgroundColor: input.trim() && !isLoading && !intakeSubmitting && !filesAnalyzing ? '#1a73e8' : '#d1d5db',
-                  color: 'white',
+                  backgroundColor: input.trim() && !isLoading && !intakeSubmitting && !filesAnalyzing ? minervaTheme.gold : '#d8dee9',
+                  color: input.trim() && !isLoading && !intakeSubmitting && !filesAnalyzing ? minervaTheme.navyDark : minervaTheme.muted,
                   border: 'none',
                   borderRadius: '8px',
                   fontSize: '14px',

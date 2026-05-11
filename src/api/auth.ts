@@ -102,7 +102,7 @@ export async function signInWithPassword(email: string, password: string): Promi
       case 'auth/user-not-found':
       case 'auth/wrong-password':
       case 'auth/invalid-credential':
-        message = 'Invalid email or password. Please try again.';
+        message = 'Invalid email or password';
         break;
       case 'auth/invalid-email':
         message = 'Please enter a valid email address.';

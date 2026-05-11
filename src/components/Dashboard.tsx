@@ -152,7 +152,7 @@ function Dashboard() {
       }
       setAuthPassword('')
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : 'Authentication failed')
+      setAuthError(error instanceof Error ? error.message : 'Invalid email or password')
     } finally {
       setAuthLoading(false)
     }
