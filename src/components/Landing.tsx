@@ -15,9 +15,6 @@ function Landing() {
             Were you injured or affected by an incident?
             Submit a secure intake detailing what happened. Trusted law firms review your case and send their best offers. You choose who to talk to, with no pressure and no sales calls.
           </p>
-          <p>
-            
-          </p>
           <div className="hero-actions">
             <Link className="btn accent" to="/base/intake">
               Get Your Case on the Marketplace
@@ -28,6 +25,38 @@ function Landing() {
           </div>
         </div>
 
+        <div className="hero-card">
+          <h3>How the Marketplace Works</h3>
+          <ul className="hero-steps">
+            <li className="hero-step">
+              <span className="step-badge">1</span>
+              <div>
+                <strong>Submit Your Case</strong>
+                <span>
+                  Complete a secure intake that captures the facts, documents, and damages.
+                </span>
+              </div>
+            </li>
+            <li className="hero-step">
+              <span className="step-badge">2</span>
+              <div>
+                <strong>Firms Review &amp; Make Offers</strong>
+                <span>
+                  Vetted trial firms see an anonymized profile and send their best pitch to represent you.
+                </span>
+              </div>
+            </li>
+            <li className="hero-step">
+              <span className="step-badge">3</span>
+              <div>
+                <strong>Compare and Choose</strong>
+                <span>
+                  Review fees, experience, and strategy side-by-side, then pick the lawyer that feels right.
+                </span>
+              </div>
+            </li>
+          </ul>
+        </div>
       </section>
 
       <section id="how-it-works" className="section full-height">
