@@ -358,13 +358,13 @@ function CaseDetails() {
                     <div>
                       <p className="detail-label">Medical bills</p>
                       <p className="detail-value">
-                        ${Number(damages.medical_bills_usd || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        ${Number(damages.medical_bills_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                     </div>
                     <div>
                       <p className="detail-label">Lost wages</p>
                       <p className="detail-value">
-                        ${Number(damages.lost_wages_usd || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        ${Number(damages.lost_wages_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                     </div>
                     <div>
@@ -372,9 +372,9 @@ function CaseDetails() {
                       <p className="detail-value">{damages.days_missed ?? 0}</p>
                     </div>
                     <div>
-                      <p className="detail-label">Daily rate</p>
+                      <p className="detail-label">Hourly rate</p>
                       <p className="detail-value">
-                        ${Number(damages.daily_rate_usd || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        ${Number(damages.hourly_rate_usd || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                     </div>
                   </div>
@@ -493,7 +493,7 @@ function CaseDetails() {
                 <ul className="detail-list">
                   {parties.map((party) => (
                     <li key={party.id}>
-                      <strong>{party.role}</strong>: {party.name}
+                      <strong>{formatPartyRole(party.role)}</strong>: {party.name || 'Unknown party'}
                       {party.insurer_name && ` · Insurer: ${party.insurer_name}`}
                       {party.policy_number && ` · Policy: ${party.policy_number}`}
                       {party.claim_number && ` · Claim: ${party.claim_number}`}
@@ -509,6 +509,14 @@ function CaseDetails() {
       </section>
     </main>
   )
+}
+
+function formatPartyRole(role = '') {
+  if (role === 'defendant' || role === 'adverse') return 'Adverse party'
+  if (role === 'insurer') return 'Insurer'
+  if (role === 'plaintiff') return 'Plaintiff'
+  if (role === 'witness') return 'Witness'
+  return role || 'Party'
 }
 
 export default CaseDetails

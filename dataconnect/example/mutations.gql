@@ -78,7 +78,7 @@ mutation CreateDamages(
   $caseId: UUID!
   $medicalBillsUsd: Float
   $daysMissed: Int
-  $dailyRateUsd: Float
+  $hourlyRateUsd: Float
   $lostWagesUsd: Float
 ) @auth(level: USER) @transaction {
   query @redact {
@@ -98,7 +98,7 @@ mutation CreateDamages(
       caseId: $caseId
       medicalBillsUsd: $medicalBillsUsd
       daysMissed: $daysMissed
-      dailyRateUsd: $dailyRateUsd
+      hourlyRateUsd: $hourlyRateUsd
       lostWagesUsd: $lostWagesUsd
     }
   )

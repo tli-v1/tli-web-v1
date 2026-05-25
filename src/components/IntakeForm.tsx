@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { ArrowRight } from 'lucide-react'
 import { getSession, onAuthStateChange, signUp, signInWithPassword, signOut, resetPasswordForEmail } from '../api/auth'
 import { getStateCodes, type StateCode } from '../api/stateCodes'
 import { ensureUserProfile } from '../api/userProfile'
@@ -15,9 +17,9 @@ const steps = [
   },
   {
     name: 'Parties',
-    title: 'Who else was involved?',
+    title: 'Insurance Information (Optional)',
     description:
-      'Share the adverse party details and any insurer information you already have.',
+      'Share any insurance information you have',
   },
   {
     name: 'Documents',
@@ -54,7 +56,7 @@ interface FormData {
   authorizeDocuments: boolean;
   medicalBills: string;
   daysMissed: string;
-  dailyRate: string;
+  hourlyRate: string;
   fullName: string;
   preferredContact: string;
   email: string;
@@ -84,13 +86,46 @@ const initialFormData: FormData = {
   authorizeDocuments: false,
   medicalBills: '',
   daysMissed: '',
-  dailyRate: '',
+  hourlyRate: '',
   fullName: '',
   preferredContact: 'email',
   email: '',
   phone: '',
   consentProcess: false,
   consentContact: false,
+}
+
+const roundToCents = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
+
+const currencyInputValue = (value: string) => {
+  if (value.trim() === '') return ''
+  const amount = Number(value)
+  return Number.isFinite(amount) ? roundToCents(amount).toFixed(2) : value
+}
+
+const currencyNumber = (value: string) => roundToCents(Number(value) || 0)
+
+const formatCurrency = (value: number) =>
+  `$${roundToCents(value).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
+
+function FieldHelp({ text }: { text: string }) {
+  return (
+    <span className="field-help">
+      <button
+        type="button"
+        className="field-help__button"
+        aria-label={text}
+      >
+        ?
+      </button>
+      <span className="field-help__tooltip" role="tooltip">
+        {text}
+      </span>
+    </span>
+  )
 }
 
 function IntakeForm() {
@@ -114,15 +149,21 @@ function IntakeForm() {
   })
   const [profileEnsuredUserId, setProfileEnsuredUserId] = useState('')
   const [stateCodes, setStateCodes] = useState<StateCode[]>([])
+  const [stateDropdownOpen, setStateDropdownOpen] = useState(false)
 
   const totalSteps = steps.length
   const progress = ((currentStep + 1) / totalSteps) * 100
+  const visibleStateCodes = stateCodes.filter((item) => {
+    const query = formData.state.trim().toLowerCase()
+    if (!query) return true
+    return item.code.toLowerCase().startsWith(query) || item.name.toLowerCase().startsWith(query)
+  })
 
   const computedLostWages = useMemo(() => {
     const days = Number(formData.daysMissed) || 0
-    const rate = Number(formData.dailyRate) || 0
-    return days * rate
-  }, [formData.daysMissed, formData.dailyRate])
+    const hourlyRate = Number(formData.hourlyRate) || 0
+    return roundToCents(days * 8 * hourlyRate)
+  }, [formData.daysMissed, formData.hourlyRate])
 
   useEffect(() => {
     let isMounted = true
@@ -155,6 +196,11 @@ function IntakeForm() {
     if (!sessionUser) return
     if (profileEnsuredUserId === sessionUser.id) return
 
+    setFormData((prev) => ({
+      ...prev,
+      email: prev.email || sessionUser.email,
+    }))
+
     ensureUserProfile({
       userId: sessionUser.id,
       role: 'client',
@@ -179,6 +225,14 @@ function IntakeForm() {
     }))
     setSubmitted(false)
     setSubmitError('')
+  }
+
+  const handleCurrencyBlur = (event: React.FocusEvent<HTMLInputElement>) => {
+    const { name, value } = event.target
+    setFormData((prev) => ({
+      ...prev,
+      [name]: currencyInputValue(value),
+    }))
   }
 
   const normalizeStateValue = (value) => value.toUpperCase().slice(0, 2)
@@ -217,6 +271,7 @@ function IntakeForm() {
       ...prev,
       state: normalized,
     }))
+    setStateDropdownOpen(true)
     setSubmitted(false)
     setSubmitError('')
   }
@@ -227,6 +282,29 @@ function IntakeForm() {
       ...prev,
       state: closest,
     }))
+  }
+
+  const handleStateSelect = (code: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      state: code,
+    }))
+    setStateDropdownOpen(false)
+    setSubmitted(false)
+    setSubmitError('')
+  }
+
+  const handleIncidentDateKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Backspace' && event.key !== 'Delete') return
+    if (!formData.incidentDate) return
+
+    event.preventDefault()
+    setFormData((prev) => ({
+      ...prev,
+      incidentDate: '',
+    }))
+    setSubmitted(false)
+    setSubmitError('')
   }
 
   const handleAuthModeChange = (mode) => {
@@ -302,7 +380,7 @@ function IntakeForm() {
     try {
       const { error } = await resetPasswordForEmail(email)
       if (error) throw error
-      setAuthMessage('Reset link sent. Check your inbox to choose a new password.')
+      setAuthMessage('If an account exists for that email, you will receive a password reset link.')
     } catch (error) {
       setAuthError(error.message)
     } finally {
@@ -337,7 +415,7 @@ function IntakeForm() {
           formData.state.trim()
         )
       case 1:
-        return formData.adverseParty.trim()
+        return true
       case 2:
         return (
           formData.policeReportFile ||
@@ -346,19 +424,10 @@ function IntakeForm() {
           formData.authorizeDocuments
         )
       case 3:
-        return (
-          formData.medicalBills !== '' &&
-          formData.daysMissed !== '' &&
-          formData.dailyRate !== ''
-        )
+        return true
       case 4:
-        return (
-          formData.fullName.trim() &&
-          formData.preferredContact &&
-          formData.email.trim() &&
-          formData.consentProcess &&
-          sessionUser
-        )
+        if (!sessionUser) return false
+        return Boolean(formData.preferredContact && formData.consentProcess)
       default:
         return true
     }
@@ -393,7 +462,7 @@ function IntakeForm() {
     try {
       await ensureUserProfile({
         userId: sessionUser.id,
-        fullName: formData.fullName,
+        fullName: formData.fullName.trim() || null,
         phone: formData.phone,
         role: 'general',
       })
@@ -417,16 +486,16 @@ function IntakeForm() {
 
       const damagesPayload = {
         case_id: createdCaseId,
-        medical_bills_usd: Number(formData.medicalBills) || 0,
+        medical_bills_usd: currencyNumber(formData.medicalBills),
         days_missed: Number(formData.daysMissed) || 0,
-        daily_rate_usd: Number(formData.dailyRate) || 0,
+        hourly_rate_usd: currencyNumber(formData.hourlyRate),
       }
 
       const contactPayload = {
         case_id: createdCaseId,
-        full_name: formData.fullName.trim(),
+        full_name: formData.fullName.trim() || null,
         method: formData.preferredContact === 'email' ? 'email' : 'phone',
-        email: formData.email.trim(),
+        email: formData.email.trim() || sessionUser.email,
         phone: formData.phone.trim() || null,
       }
 
@@ -434,7 +503,7 @@ function IntakeForm() {
         {
           case_id: createdCaseId,
           role: 'adverse',
-          name: formData.adverseParty.trim(),
+          name: formData.adverseParty.trim() || 'Unknown party',
         },
       ]
 
@@ -532,9 +601,12 @@ function IntakeForm() {
           name="incidentDate"
           value={formData.incidentDate}
           onChange={handleChange}
+          onKeyDown={handleIncidentDateKeyDown}
           required
         />
       </label>
+
+      <p className="field-question">Where did the incident happen?</p>
 
       <div className="field-grid">
         <label className="field">
@@ -550,22 +622,53 @@ function IntakeForm() {
         </label>
         <label className="field">
           <span>State</span>
-          <input
-            type="text"
-            name="state"
-            value={formData.state}
-            onChange={handleStateChange}
-            onBlur={handleStateBlur}
-            list="state-codes"
-            placeholder="e.g., CA"
-            maxLength={2}
-            required
-          />
-          <datalist id="state-codes">
-            {stateCodes.map((item) => (
-              <option key={item.code} value={item.code} />
-            ))}
-          </datalist>
+          <div className="state-select">
+            <input
+              type="text"
+              name="state"
+              value={formData.state}
+              onChange={handleStateChange}
+              onFocus={() => setStateDropdownOpen(true)}
+              onBlur={handleStateBlur}
+              placeholder="e.g., CA"
+              maxLength={2}
+              autoComplete="off"
+              aria-expanded={stateDropdownOpen}
+              aria-controls="state-options"
+              required
+            />
+            <button
+              type="button"
+              className="state-select__toggle"
+              onClick={() => setStateDropdownOpen((prev) => !prev)}
+              aria-label={stateDropdownOpen ? 'Close state dropdown' : 'Open state dropdown'}
+            >
+              {stateDropdownOpen ? 'x' : '▾'}
+            </button>
+            {stateDropdownOpen && (
+              <div id="state-options" className="state-select__menu" role="listbox">
+                {visibleStateCodes.map((item) => (
+                  <button
+                    key={item.code}
+                    type="button"
+                    className="state-select__option"
+                    onMouseDown={(event) => {
+                      event.preventDefault()
+                      handleStateSelect(item.code)
+                    }}
+                    role="option"
+                    aria-selected={formData.state === item.code}
+                  >
+                    <span>{item.code}</span>
+                    <small>{item.name}</small>
+                  </button>
+                ))}
+                {!visibleStateCodes.length && (
+                  <p className="state-select__empty">No matching states</p>
+                )}
+              </div>
+            )}
+          </div>
         </label>
       </div>
     </>
@@ -573,51 +676,69 @@ function IntakeForm() {
 
   const renderParties = () => (
     <>
-      <label className="field">
-        <span>Adverse person or company</span>
+      <div className="field">
+        <label className="field-label" htmlFor="adverseParty">
+          Adverse person or company (optional)
+          <FieldHelp text="This is the other driver or business involved in your accident. Fill this out if someone else caused the crash, or leave it blank if you do not have their details." />
+        </label>
         <input
+          id="adverseParty"
           type="text"
           name="adverseParty"
           value={formData.adverseParty}
           onChange={handleChange}
-          placeholder="Name of the opposing party"
-          required
+          placeholder="Name of the opposing party, or leave blank if unknown"
         />
-      </label>
+        <small className="field-hint">
+          If you do not know who the opposing party is yet, leave this blank.
+        </small>
+      </div>
 
       <div className="field-grid">
-        <label className="field">
-          <span>Insurer name (optional)</span>
+        <div className="field">
+          <label className="field-label" htmlFor="insurerName">
+            Insurer name (optional)
+            <FieldHelp text="This is the name of the insurance company covering other person/company's vehicle. Enter the other driver's insurance provider here, or leave it blank if they are uninsured or fled the scene." />
+          </label>
           <input
+            id="insurerName"
             type="text"
             name="insurerName"
             value={formData.insurerName}
             onChange={handleChange}
             placeholder="Carrier name if known"
           />
-        </label>
-        <label className="field">
-          <span>Policy number (optional)</span>
+        </div>
+        <div className="field">
+          <label className="field-label" htmlFor="policyNumber">
+            Policy number (optional)
+            <FieldHelp text="The permanent account number on your insurance card that proves you have active coverage." />
+          </label>
           <input
+            id="policyNumber"
             type="text"
             name="policyNumber"
             value={formData.policyNumber}
             onChange={handleChange}
             placeholder="Policy #"
           />
-        </label>
+        </div>
       </div>
 
-      <label className="field">
-        <span>Claim number (optional)</span>
+      <div className="field">
+        <label className="field-label" htmlFor="claimNumber">
+          Claim number (optional)
+          <FieldHelp text="The unique tracking number assigned after you report a specific accident." />
+        </label>
         <input
+          id="claimNumber"
           type="text"
           name="claimNumber"
           value={formData.claimNumber}
           onChange={handleChange}
           placeholder="Claim # if assigned"
         />
-      </label>
+      </div>
     </>
   )
 
@@ -679,16 +800,16 @@ function IntakeForm() {
   const renderDamages = () => (
     <>
       <label className="field">
-        <span>Medical bills to date (USD)</span>
+        <span>Medical bills to date (USD, optional)</span>
         <input
           type="number"
           name="medicalBills"
           value={formData.medicalBills}
           onChange={handleChange}
+          onBlur={handleCurrencyBlur}
           min="0"
-          step="100"
+          step="0.01"
           placeholder="e.g., 1500"
-          required
         />
       </label>
 
@@ -702,20 +823,19 @@ function IntakeForm() {
             onChange={handleChange}
             min="0"
             placeholder="0 if none"
-            required
           />
         </label>
         <label className="field">
-          <span>Daily rate (USD)</span>
+          <span>Hourly rate (USD)</span>
           <input
             type="number"
-            name="dailyRate"
-            value={formData.dailyRate}
+            name="hourlyRate"
+            value={formData.hourlyRate}
             onChange={handleChange}
+            onBlur={handleCurrencyBlur}
             min="0"
-            step="10"
-            placeholder="Your approximate day rate"
-            required
+            step="0.01"
+            placeholder="Your approximate hourly rate"
           />
         </label>
       </div>
@@ -724,7 +844,7 @@ function IntakeForm() {
         <span>Rough lost wages (auto-calculated)</span>
         <input
           type="text"
-          value={computedLostWages ? `$${computedLostWages.toLocaleString()}` : '$0'}
+          value={formatCurrency(computedLostWages)}
           readOnly
         />
       </label>
@@ -740,8 +860,8 @@ function IntakeForm() {
           name="fullName"
           value={formData.fullName}
           onChange={handleChange}
-          placeholder="Your legal name"
-          required
+          placeholder={sessionUser ? 'Optional when signed in' : 'Your legal name'}
+          required={!sessionUser}
         />
       </label>
 
@@ -777,8 +897,8 @@ function IntakeForm() {
           name="email"
           value={formData.email}
           onChange={handleChange}
-          placeholder="you@email.com"
-          required
+          placeholder={sessionUser?.email || 'you@email.com'}
+          required={!sessionUser}
         />
       </label>
 
@@ -913,6 +1033,27 @@ function IntakeForm() {
   const isLastStep = currentStep === totalSteps - 1
   const nextLabel = submitting ? 'Saving...' : isLastStep ? 'Submit intake' : 'Next section'
 
+  if (submitted) {
+    return (
+      <main className="page">
+        <section className="card intake-card intake-thank-you">
+          <div className="thank-you-mark">✓</div>
+          <p className="eyebrow">Intake submitted</p>
+          <h1>Thank you for trusting us with your case.</h1>
+          <p className="lead">
+            We know this may be a stressful moment. Your intake has been submitted successfully. We’re committed to helping you pursue the compensation you may be entitled to. Visit your dashboard to review your submitted case, add more details or documents,
+              and view future offers from law firms interested in helping you.
+          </p>
+
+          <Link className="btn accent thank-you-action" to="/dashboard">
+            Go to dashboard
+            <ArrowRight aria-hidden="true" size={18} strokeWidth={2.4} />
+          </Link>
+        </section>
+      </main>
+    )
+  }
+
   return (
     <main className="page">
       <section className="card intake-card">
@@ -922,8 +1063,13 @@ function IntakeForm() {
           </p>
           <h1>{steps[currentStep].title}</h1>
           <p className="lead">{steps[currentStep].description}</p>
-          <div className="progress">
-            <div className="progress__fill" style={{ width: `${progress}%` }} aria-hidden="true" />
+          <div className="progress-wrap">
+            <p className="progress-subtitle">
+              {Math.round(progress)}% complete
+            </p>
+            <div className="progress">
+              <div className="progress__fill" style={{ width: `${progress}%` }} aria-hidden="true" />
+            </div>
           </div>
         </header>
 
@@ -945,11 +1091,6 @@ function IntakeForm() {
           </footer>
 
           {submitError && <p className="error">{submitError}</p>}
-          {submitted && (
-            <p className="success">
-              Thanks! Your incident intake is complete. Go to your dashboard to view your submitted case.
-            </p>
-          )}
         </form>
       </section>
     </main>

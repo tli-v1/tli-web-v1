@@ -10,7 +10,7 @@ export interface ChatIntakeDraft {
   authorizeDocuments: boolean | null;
   medicalBills: string;
   daysMissed: string;
-  dailyRate: string;
+  hourlyRate: string;
   fullName: string;
   preferredContact: string;
   email: string;
@@ -53,13 +53,20 @@ export const emptyChatIntakeDraft: ChatIntakeDraft = {
   authorizeDocuments: null,
   medicalBills: "",
   daysMissed: "",
-  dailyRate: "",
+  hourlyRate: "",
   fullName: "",
   preferredContact: "email",
   email: "",
   phone: "",
   consentProcess: false,
   consentContact: false,
+};
+
+const roundToCents = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const currencyString = (value: string) => {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? roundToCents(amount).toFixed(2) : value;
 };
 
 const stepOrder: ChatIntakeStep[] = [
@@ -81,7 +88,7 @@ const questions: Record<ChatIntakeStep, string> = {
   adverseParty: "Who else was involved? Share the adverse party’s name or say unknown.",
   insurerInfo: "Do you have any insurance info, policy number, or claim number? If not, say none.",
   documents: "Do you have documents or photos, or do you authorize the legal team to retrieve reports if needed? Reply yes to authorize, or briefly describe what you have.",
-  damages: "What are the damages so far? Please include medical bills, days missed from work, and your approximate daily rate. Use 0 for anything that does not apply.",
+  damages: "What are the damages so far? Medical bills are optional. Please include days missed from work and your approximate hourly rate if known. Use 0 for anything that does not apply.",
   contact: "What is your full name, preferred contact method, email, and phone number if you want calls or texts?",
   consent: "Do you consent to True Legal storing this intake and contacting you about it? Reply yes or no.",
 };
@@ -103,7 +110,7 @@ export function getNextIntakeStep(draft: ChatIntakeDraft): ChatIntakeStep | null
   if (!draft.adverseParty.trim()) return "adverseParty";
   if (draft.insurerName === "") return "insurerInfo";
   if (draft.authorizeDocuments === null) return "documents";
-  if (draft.medicalBills === "" || draft.daysMissed === "" || draft.dailyRate === "") return "damages";
+  if (draft.daysMissed === "" || draft.hourlyRate === "") return "damages";
   if (!draft.fullName.trim() || !draft.email.trim()) return "contact";
   if (!draft.consentProcess) return "consent";
   return null;
@@ -179,15 +186,15 @@ export function applyIntakeAnswer(
 
     case "damages": {
       if (isUnusableAnswer(trimmed, { allowUnknown: true })) {
-        return retry(next, "Please include three numbers: medical bills, days missed, and daily rate. Use 0 if something does not apply.");
+        return retry(next, "Please include three numbers: medical bills, days missed, and hourly rate. Use 0 if something does not apply.");
       }
       const damages = parseDamages(trimmed);
       if (!damages) {
-        return retry(next, "Please include three numbers: medical bills, days missed, and daily rate. Use 0 if something does not apply.");
+        return retry(next, "Please include three numbers: medical bills, days missed, and hourly rate. Use 0 if something does not apply.");
       }
       next.medicalBills = damages.medicalBills;
       next.daysMissed = damages.daysMissed;
-      next.dailyRate = damages.dailyRate;
+      next.hourlyRate = damages.hourlyRate;
       return accept(next);
     }
 
@@ -257,7 +264,7 @@ export function buildIntakeSummary(draft: ChatIntakeDraft): string {
     `Incident: ${draft.whatHappened}`,
     `Date/location: ${draft.incidentDate} in ${draft.city}, ${draft.state}`,
     `Other party: ${draft.adverseParty}`,
-    `Damages: $${draft.medicalBills} medical bills, ${draft.daysMissed} days missed, $${draft.dailyRate}/day`,
+    `Damages: $${currencyString(draft.medicalBills)} medical bills, ${draft.daysMissed} days missed, $${currencyString(draft.hourlyRate)}/hour`,
     `Contact: ${draft.fullName}, ${draft.email}${draft.phone ? `, ${draft.phone}` : ""}`,
   ].join("\n");
 }
@@ -482,14 +489,29 @@ function applyInsurerInfo(draft: ChatIntakeDraft, text: string) {
   draft.claimNumber = text.match(/claim(?: number| #|:)?\s*([a-z0-9-]+)/i)?.[1] ?? "";
 }
 
-function parseDamages(text: string): { medicalBills: string; daysMissed: string; dailyRate: string } | null {
+function parseDamages(text: string): { medicalBills: string; daysMissed: string; hourlyRate: string } | null {
+  if (/\b(no|none|not applicable|n\/a|did not miss work|didn't miss work|no missed work)\b/i.test(text)) {
+    return {
+      medicalBills: "0.00",
+      daysMissed: "0",
+      hourlyRate: "0.00",
+    };
+  }
+
   const numbers = text.match(/\d+(?:,\d{3})*(?:\.\d+)?/g)?.map((value) => value.replace(/,/g, "")) ?? [];
-  if (numbers.length < 3) return null;
+  if (numbers.length < 2) return null;
   if (numbers.slice(0, 3).some((value) => !Number.isFinite(Number(value)) || Number(value) < 0)) return null;
+  if (numbers.length === 2) {
+    return {
+      medicalBills: "0.00",
+      daysMissed: numbers[0],
+      hourlyRate: currencyString(numbers[1]),
+    };
+  }
   return {
-    medicalBills: numbers[0],
+    medicalBills: currencyString(numbers[0]),
     daysMissed: numbers[1],
-    dailyRate: numbers[2],
+    hourlyRate: currencyString(numbers[2]),
   };
 }
 

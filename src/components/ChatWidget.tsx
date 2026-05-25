@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react'
 import { LucideMaximize2, LucideMic, LucideMicOff, LucideMinimize2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import {
@@ -40,6 +40,10 @@ interface Message {
   content: string
   timestamp: Date
 }
+
+const roundToCents = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
+
+const currencyNumber = (value: string) => roundToCents(Number(value) || 0)
 
 interface ChatWidgetProps {
   user: User | null
@@ -175,9 +179,9 @@ export function ChatWidget(props: ChatWidgetProps) {
         }),
         createDamages({
           case_id: createdCaseId,
-          medical_bills_usd: Number(draft.medicalBills) || 0,
+          medical_bills_usd: currencyNumber(draft.medicalBills),
           days_missed: Number(draft.daysMissed) || 0,
-          daily_rate_usd: Number(draft.dailyRate) || 0,
+          hourly_rate_usd: currencyNumber(draft.hourlyRate),
         }),
         createCaseContact({
           case_id: createdCaseId,
@@ -432,8 +436,13 @@ export function ChatWidget(props: ChatWidgetProps) {
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      sendMessage()
+      void sendMessage()
     }
+  }
+
+  const handleChatSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    void sendMessage()
   }
 
   if (!isOpen && variant === 'floating') {
@@ -746,7 +755,7 @@ export function ChatWidget(props: ChatWidgetProps) {
                 )}
               </div>
             )}
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <form onSubmit={handleChatSubmit} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
               <button
                 type="button"
                 onClick={voiceInput.toggle}
@@ -798,6 +807,7 @@ export function ChatWidget(props: ChatWidgetProps) {
                 onKeyDown={handleKeyDown}
                 placeholder="Ask Minerva..."
                 disabled={isLoading || intakeSubmitting || filesAnalyzing}
+                enterKeyHint="send"
                 style={{
                   flex: 1,
                   minHeight: '44px',
@@ -814,7 +824,7 @@ export function ChatWidget(props: ChatWidgetProps) {
                 rows={1}
               />
               <button
-                onClick={sendMessage}
+                type="submit"
                 disabled={!input.trim() || isLoading || intakeSubmitting || filesAnalyzing}
                 style={{
                   padding: '12px 24px',
@@ -830,7 +840,7 @@ export function ChatWidget(props: ChatWidgetProps) {
               >
                 Send
               </button>
-            </div>
+            </form>
           </div>
         </div>
       )}

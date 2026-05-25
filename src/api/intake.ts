@@ -32,6 +32,13 @@ const numberValue = (value: unknown): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const roundToCents = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const currencyValue = (value: unknown): number | null => {
+  const parsed = numberValue(value);
+  return parsed === null ? null : roundToCents(parsed);
+};
+
 const errorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
@@ -108,20 +115,20 @@ export async function createIncident(incidentData: IntakeRecord): Promise<{ erro
 
 export async function createDamages(damagesData: IntakeRecord): Promise<{ error: string | null }> {
   const medicalBillsUsd =
-    numberValue(damagesData.medical_bills_usd) ?? numberValue(damagesData.medical_expenses);
+    currencyValue(damagesData.medical_bills_usd) ?? currencyValue(damagesData.medical_expenses);
   const daysMissed = numberValue(damagesData.days_missed);
-  const dailyRateUsd = numberValue(damagesData.daily_rate_usd);
+  const hourlyRateUsd = currencyValue(damagesData.hourly_rate_usd);
   const lostWagesUsd =
-    numberValue(damagesData.lost_wages_usd) ??
-    numberValue(damagesData.lost_wages) ??
-    (daysMissed !== null && dailyRateUsd !== null ? daysMissed * dailyRateUsd : null);
+    currencyValue(damagesData.lost_wages_usd) ??
+    currencyValue(damagesData.lost_wages) ??
+    (daysMissed !== null && hourlyRateUsd !== null ? roundToCents(daysMissed * 8 * hourlyRateUsd) : null);
 
   try {
     await createDataConnectDamages({
       caseId: String(damagesData.case_id),
       medicalBillsUsd,
       daysMissed,
-      dailyRateUsd,
+      hourlyRateUsd,
       lostWagesUsd,
     });
     return { error: null };

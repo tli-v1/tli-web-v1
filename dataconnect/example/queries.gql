@@ -6,14 +6,14 @@ query GetUserCases @auth(level: USER) {
     id
     status
     createdAt
-    incidents_on_case(limit: 1) {
+    caseListIncidents: incidents_on_case(limit: 1) {
       city
       stateCode
     }
-    documents_on_case {
+    caseListDocuments: documents_on_case {
       id
     }
-    lawyerClientAgreements_on_case {
+    caseListAgreements: lawyerClientAgreements_on_case {
       id
     }
   }
@@ -29,7 +29,7 @@ query GetCaseDetails($caseId: UUID!) @auth(level: USER) {
     consentAt
     createdAt
     updatedAt
-    incidents_on_case(limit: 1) {
+    caseDetailIncidents: incidents_on_case(limit: 1) {
       id
       caseId
       city
@@ -42,7 +42,7 @@ query GetCaseDetails($caseId: UUID!) @auth(level: USER) {
       caseId
       medicalBillsUsd
       daysMissed
-      dailyRateUsd
+      hourlyRateUsd
       lostWagesUsd
     }
     caseContact_on_case {
@@ -62,7 +62,7 @@ query GetCaseDetails($caseId: UUID!) @auth(level: USER) {
       claimNumber
       createdAt
     }
-    documents_on_case(orderBy: [{ uploadedAt: DESC }]) {
+    caseDetailDocuments: documents_on_case(orderBy: [{ uploadedAt: DESC }]) {
       id
       caseId
       kind
@@ -72,7 +72,7 @@ query GetCaseDetails($caseId: UUID!) @auth(level: USER) {
       uploadedAt
       notes
     }
-    lawyerClientAgreements_on_case(orderBy: [{ createdAt: DESC }]) {
+    caseDetailAgreements: lawyerClientAgreements_on_case(orderBy: [{ createdAt: DESC }]) {
       id
       caseId
       lawyerId

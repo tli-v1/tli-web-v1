@@ -1,0 +1,58 @@
+mutation SeedStateCodes
+  @auth(level: PUBLIC, insecureReason: "One-off CLI seed for public state reference data") {
+  stateCode_upsertMany(
+    data: [
+      { code: "AL", name: "Alabama", active: true }
+      { code: "AK", name: "Alaska", active: true }
+      { code: "AZ", name: "Arizona", active: true }
+      { code: "AR", name: "Arkansas", active: true }
+      { code: "CA", name: "California", active: true }
+      { code: "CO", name: "Colorado", active: true }
+      { code: "CT", name: "Connecticut", active: true }
+      { code: "DE", name: "Delaware", active: true }
+      { code: "DC", name: "District of Columbia", active: true }
+      { code: "FL", name: "Florida", active: true }
+      { code: "GA", name: "Georgia", active: true }
+      { code: "HI", name: "Hawaii", active: true }
+      { code: "ID", name: "Idaho", active: true }
+      { code: "IL", name: "Illinois", active: true }
+      { code: "IN", name: "Indiana", active: true }
+      { code: "IA", name: "Iowa", active: true }
+      { code: "KS", name: "Kansas", active: true }
+      { code: "KY", name: "Kentucky", active: true }
+      { code: "LA", name: "Louisiana", active: true }
+      { code: "ME", name: "Maine", active: true }
+      { code: "MD", name: "Maryland", active: true }
+      { code: "MA", name: "Massachusetts", active: true }
+      { code: "MI", name: "Michigan", active: true }
+      { code: "MN", name: "Minnesota", active: true }
+      { code: "MS", name: "Mississippi", active: true }
+      { code: "MO", name: "Missouri", active: true }
+      { code: "MT", name: "Montana", active: true }
+      { code: "NE", name: "Nebraska", active: true }
+      { code: "NV", name: "Nevada", active: true }
+      { code: "NH", name: "New Hampshire", active: true }
+      { code: "NJ", name: "New Jersey", active: true }
+      { code: "NM", name: "New Mexico", active: true }
+      { code: "NY", name: "New York", active: true }
+      { code: "NC", name: "North Carolina", active: true }
+      { code: "ND", name: "North Dakota", active: true }
+      { code: "OH", name: "Ohio", active: true }
+      { code: "OK", name: "Oklahoma", active: true }
+      { code: "OR", name: "Oregon", active: true }
+      { code: "PA", name: "Pennsylvania", active: true }
+      { code: "RI", name: "Rhode Island", active: true }
+      { code: "SC", name: "South Carolina", active: true }
+      { code: "SD", name: "South Dakota", active: true }
+      { code: "TN", name: "Tennessee", active: true }
+      { code: "TX", name: "Texas", active: true }
+      { code: "UT", name: "Utah", active: true }
+      { code: "VT", name: "Vermont", active: true }
+      { code: "VA", name: "Virginia", active: true }
+      { code: "WA", name: "Washington", active: true }
+      { code: "WV", name: "West Virginia", active: true }
+      { code: "WI", name: "Wisconsin", active: true }
+      { code: "WY", name: "Wyoming", active: true }
+    ]
+  )
+}

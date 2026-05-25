@@ -170,7 +170,7 @@ function Dashboard() {
     try {
       const { error } = await resetPasswordForEmail(email, `${window.location.origin}/reset-password`)
       if (error) throw error
-      setAuthMessage('Reset link sent. Check your inbox.')
+      setAuthMessage('If an account exists for that email, you will receive a password reset link.')
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Password reset failed')
     } finally {

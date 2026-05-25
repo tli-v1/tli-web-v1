@@ -53,7 +53,7 @@ type Damage @table(key: ["caseId"]) {
   case: Case! @ref(fields: "caseId") # FK to Case
   medicalBillsUsd: Float
   daysMissed: Int
-  dailyRateUsd: Float
+  hourlyRateUsd: Float
   lostWagesUsd: Float
 }
 

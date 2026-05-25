@@ -1,0 +1,107 @@
+mutation CreateDemoData @transaction @auth(level: USER, insecureReason: "This is a seed mutation and should only be run by authenticated users to set up initial data.") {
+  user_upsertMany(
+    data: [
+      {
+        id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+        displayName: "Alice Smith",
+        email: "alice.smith@example.com",
+        photoUrl: "https://example.com/alice.jpg",
+        createdAt: "2023-01-01T10:00:00Z"
+      },
+      {
+        id: "b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
+        displayName: "Bob Johnson",
+        email: "bob.johnson@example.com",
+        photoUrl: "https://example.com/bob.jpg",
+        createdAt: "2023-01-02T11:00:00Z"
+      }
+    ]
+  )
+  movie_upsertMany(
+    data: [
+      {
+        id: "c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a13",
+        title: "The Great Adventure",
+        year: 2022,
+        summary: "A thrilling journey across lands unknown.",
+        genres: ["Adventure", "Action"],
+        runtime: 120,
+        createdAt: "2023-01-03T12:00:00Z"
+      },
+      {
+        id: "d3eebc99-9c0b-4ef8-bb6d-6bb9bd380a14",
+        title: "Mystery in the Moonlight",
+        year: 2023,
+        summary: "A detective unravels a dark secret.",
+        genres: ["Mystery", "Thriller"],
+        runtime: 105,
+        createdAt: "2023-01-04T13:00:00Z"
+      }
+    ]
+  )
+  movieList_upsertMany(
+    data: [
+      {
+        id: "e4eebc99-9c0b-4ef8-bb6d-6bb9bd380a15",
+        userId: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+        name: "Alice's Favorites",
+        isPublic: true,
+        description: "My top picks for a great movie night.",
+        createdAt: "2023-01-05T14:00:00Z",
+        updatedAt: "2023-01-05T14:00:00Z"
+      },
+      {
+        id: "f5eebc99-9c0b-4ef8-bb6d-6bb9bd380a16",
+        userId: "b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
+        name: "Bob's Watchlist",
+        isPublic: false,
+        description: "Movies I want to see soon.",
+        createdAt: "2023-01-06T15:00:00Z",
+        updatedAt: "2023-01-06T15:00:00Z"
+      }
+    ]
+  )
+  movieListItem_upsertMany(
+    data: [
+      {
+        movieListId: "e4eebc99-9c0b-4ef8-bb6d-6bb9bd380a15",
+        movieId: "c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a13",
+        position: 1,
+        note: "A must-watch adventure!"
+      },
+      {
+        movieListId: "f5eebc99-9c0b-4ef8-bb6d-6bb9bd380a16",
+        movieId: "d3eebc99-9c0b-4ef8-bb6d-6bb9bd380a14",
+        position: 1,
+        note: "Heard great things about this one."
+      }
+    ]
+  )
+  watch_upsertMany(
+    data: [
+      {
+        id: "17eebc99-9c0b-4ef8-bb6d-6bb9bd380a17",
+        userId: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+        movieId: "c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a13",
+        createdAt: "2023-01-07T16:00:00Z",
+        watchDate: "2023-01-07",
+        location: "Home"
+      }
+    ]
+  )
+  review_upsertMany(
+    data: [
+      {
+        id: "28eebc99-9c0b-4ef8-bb6d-6bb9bd380a18",
+        userId: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+        movieId: "c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a13",
+        watchId: "17eebc99-9c0b-4ef8-bb6d-6bb9bd380a17",
+        rating: 5,
+        reviewText: "Absolutely loved it! A true cinematic masterpiece.",
+        isPublic: true,
+        createdAt: "2023-01-08T17:00:00Z",
+        updatedAt: "2023-01-08T17:00:00Z"
+      }
+    ]
+  )
+}

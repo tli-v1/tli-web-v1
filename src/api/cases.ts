@@ -8,13 +8,15 @@ import type { ApiResponse, CaseDetails, CaseSummary } from '../types';
 
 type DataConnectCase = NonNullable<GetCaseDetailsData['case']>;
 type DataConnectCaseListItem = GetUserCasesData['cases'][number];
-type DataConnectIncident = DataConnectCase['incidents_on_case'][number];
+type DataConnectIncident = DataConnectCase['caseDetailIncidents'][number];
 type DataConnectDamage = NonNullable<DataConnectCase['damage_on_case']>;
 type DataConnectContact = NonNullable<DataConnectCase['caseContact_on_case']>;
 type DataConnectParty = DataConnectCase['parties_on_case'][number];
-type DataConnectDocument = DataConnectCase['documents_on_case'][number];
-type DataConnectAgreement = DataConnectCase['lawyerClientAgreements_on_case'][number];
+type DataConnectDocument = DataConnectCase['caseDetailDocuments'][number];
+type DataConnectAgreement = DataConnectCase['caseDetailAgreements'][number];
 type DataConnectAgreementFile = DataConnectAgreement['lawyerClientAgreementFiles_on_agreement'][number];
+
+const roundToCents = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 export async function getUserCases(_userId: string): Promise<ApiResponse<CaseSummary[]>> {
   try {
@@ -46,10 +48,10 @@ export async function getCaseDetails(caseId: string): Promise<ApiResponse<CaseDe
       };
     }
 
-    const incidents = caseRecord.incidents_on_case || [];
+    const incidents = caseRecord.caseDetailIncidents || [];
     const parties = caseRecord.parties_on_case || [];
-    const documents = caseRecord.documents_on_case || [];
-    const agreements = caseRecord.lawyerClientAgreements_on_case || [];
+    const documents = caseRecord.caseDetailDocuments || [];
+    const agreements = caseRecord.caseDetailAgreements || [];
     const incident = incidents[0] ?? null;
     const mappedIncident = incident ? mapIncident(incident) : null;
     const mappedCaseInfo = mapCaseInfo(caseRecord);
@@ -89,7 +91,7 @@ export async function getCaseDetails(caseId: string): Promise<ApiResponse<CaseDe
 }
 
 function mapCaseSummary(item: DataConnectCaseListItem): CaseSummary {
-  const incident = (item.incidents_on_case || [])[0];
+  const incident = (item.caseListIncidents || [])[0];
 
   return {
     case_id: item.id,
@@ -97,8 +99,8 @@ function mapCaseSummary(item: DataConnectCaseListItem): CaseSummary {
     created_at: item.createdAt,
     city: incident?.city ?? '',
     state: incident?.stateCode ?? '',
-    doc_count: (item.documents_on_case || []).length,
-    agreement_count: (item.lawyerClientAgreements_on_case || []).length,
+    doc_count: (item.caseListDocuments || []).length,
+    agreement_count: (item.caseListAgreements || []).length,
   };
 }
 
@@ -128,18 +130,18 @@ function mapIncident(item: DataConnectIncident) {
 }
 
 function mapDamage(item: DataConnectDamage) {
-  const lostWages = item.lostWagesUsd ?? calculateLostWages(item.daysMissed, item.dailyRateUsd);
+  const lostWages = roundCurrencyValue(item.lostWagesUsd) ?? calculateLostWages(item.daysMissed, item.hourlyRateUsd);
 
   return {
     case_id: item.caseId,
-    medical_expenses: item.medicalBillsUsd ?? null,
+    medical_expenses: roundCurrencyValue(item.medicalBillsUsd),
     property_damage: null,
     lost_wages: lostWages,
     pain_suffering: null,
     other_damages: null,
-    medical_bills_usd: item.medicalBillsUsd ?? null,
+    medical_bills_usd: roundCurrencyValue(item.medicalBillsUsd),
     days_missed: item.daysMissed ?? null,
-    daily_rate_usd: item.dailyRateUsd ?? null,
+    hourly_rate_usd: roundCurrencyValue(item.hourlyRateUsd),
     lost_wages_usd: lostWages,
   };
 }
@@ -225,10 +227,14 @@ function mapDocKind(kind: string): string {
   return map[kind] ?? kind.toLowerCase();
 }
 
-function calculateLostWages(daysMissed?: number | null, dailyRateUsd?: number | null): number | null {
-  if (daysMissed == null || dailyRateUsd == null) {
+function calculateLostWages(daysMissed?: number | null, hourlyRateUsd?: number | null): number | null {
+  if (daysMissed == null || hourlyRateUsd == null) {
     return null;
   }
 
-  return daysMissed * dailyRateUsd;
+  return roundToCents(daysMissed * 8 * hourlyRateUsd);
+}
+
+function roundCurrencyValue(value?: number | null): number | null {
+  return value == null ? null : roundToCents(value);
 }
