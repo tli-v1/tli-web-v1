@@ -7,15 +7,11 @@ import Landing from './components/Landing'
 import Dashboard from './components/Dashboard'
 import CaseDetails from './components/CaseDetails'
 import ResetPassword from './components/ResetPassword'
-import { ChatWidget } from './components/ChatWidget'
-import { getSession, onAuthStateChange } from './api/auth'
-import type { User } from './types'
 
 function AppShell() {
   const navigate = useNavigate()
   const location = useLocation()
   const [navOpen, setNavOpen] = useState(false)
-  const [sessionUser, setSessionUser] = useState<User | null>(null)
 
   const scrollToSection = (sectionId) => {
     const section = document.getElementById(sectionId)
@@ -47,25 +43,6 @@ function AppShell() {
 
     return () => clearTimeout(timeout)
   }, [location, navigate, onLanding])
-
-  useEffect(() => {
-    let isMounted = true
-
-    getSession().then((user) => {
-      if (isMounted) {
-        setSessionUser(user)
-      }
-    })
-
-    const unsubscribe = onAuthStateChange((user) => {
-      setSessionUser(user)
-    })
-
-    return () => {
-      isMounted = false
-      unsubscribe()
-    }
-  }, [])
 
   return (
     <div className="site-shell">
@@ -127,8 +104,6 @@ function AppShell() {
         <Route path="/dashboard/cases/:caseId" element={<CaseDetails />} />
         <Route path="/reset-password" element={<ResetPassword />} />
       </Routes>
-
-      <ChatWidget user={sessionUser} variant="floating" />
     </div>
   )
 }
