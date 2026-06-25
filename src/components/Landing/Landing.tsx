@@ -1,25 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Mic } from 'lucide-react'
-import { getInitialIntakeQuestion } from '../../agent/intakeFlow'
-import { preloadConversationalSpeech } from '../../api/speech'
-import { unlockConversationalAudio } from '../../hooks/useSpeechOutput'
-import type { User } from '../../types'
-import { ChatWidget } from '../ChatWidget'
+import RealtimeVoiceIntake from '../RealtimeVoiceIntake'
 import Footer from '../Footer'
 import './Landing.css'
 
-interface LandingProps {
-  user: User | null
-}
-
-function Landing({ user }: LandingProps) {
+function Landing() {
   const marketplaceRef = useRef<HTMLElement | null>(null)
   const [isMarketplaceVisible, setIsMarketplaceVisible] = useState(false)
   const [isIntakeOpen, setIsIntakeOpen] = useState(false)
-
-  useEffect(() => {
-    preloadConversationalSpeech(getInitialIntakeQuestion())
-  }, [])
 
   useEffect(() => {
     const section = marketplaceRef.current
@@ -60,10 +48,7 @@ function Landing({ user }: LandingProps) {
               className="hero-voice-button"
               type="button"
               aria-label="Start conversational intake"
-              onClick={() => {
-                unlockConversationalAudio()
-                setIsIntakeOpen(true)
-              }}
+              onClick={() => setIsIntakeOpen(true)}
             >
               <Mic aria-hidden="true" />
             </button>
@@ -80,12 +65,7 @@ function Landing({ user }: LandingProps) {
             aria-label="Close conversational intake"
             onClick={() => setIsIntakeOpen(false)}
           />
-          <ChatWidget
-            user={user}
-            variant="hero"
-            intakeMode
-            onClose={() => setIsIntakeOpen(false)}
-          />
+          <RealtimeVoiceIntake onClose={() => setIsIntakeOpen(false)} />
         </div>
       )}
 

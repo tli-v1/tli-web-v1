@@ -1,13 +1,16 @@
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
+import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
 import { VertexAI } from '@google-cloud/vertexai';
 import textToSpeech from '@google-cloud/text-to-speech';
+import { createHash } from 'node:crypto';
 
 admin.initializeApp();
 
 const projectId = 'peak-bit-486121-n6';
 const location = 'us-central1';
 const model = 'gemini-2.5-flash-lite';
+const openAiApiKey = defineSecret('OPENAI_API_KEY');
 const speechClient = new textToSpeech.TextToSpeechClient({
   apiEndpoint: 'us-texttospeech.googleapis.com',
 });
@@ -19,6 +22,36 @@ Keep questions inviting and concise.
 Do not sound distressed, overly cheerful, theatrical, patronizing, or flirtatious.
 When discussing injuries or difficult events, convey quiet empathy without exaggerating emotion.`;
 const conversationalIntakes = admin.firestore().collection('conversationalIntakes');
+const minervaRealtimeInstructions = `You are Minerva, True Legal Innovations' conversational legal-intake assistant.
+
+Your purpose is to compassionately collect the information needed for a legal intake. You are not a lawyer, do not provide legal advice, and do not create an attorney-client relationship.
+
+Be warm, calm, concise, and reassuring. Ask one focused question at a time and speak naturally. Review the whole conversation before asking a question. Never ask the user to repeat information already provided. Accept approximate, incomplete, unknown, and conversational answers. Do not invent missing information.
+
+Abuse and relevance:
+- Keep an internal count of consecutive answers that do not plausibly answer the current intake question.
+- On the first and second irrelevant answer, briefly redirect to the same question without engaging with unrelated content.
+- On the third consecutive irrelevant answer, say: "I’m going to pause this intake because the responses are not related to the questions. You can start again when you’re ready." Do not ask another question.
+- Reset the irrelevant-answer count whenever the user gives a plausibly relevant answer.
+- Ignore silence, background noise, isolated filler sounds, and unintelligible audio. Never infer an answer from them.
+- Keep every response under 80 spoken words.
+
+Collect in this exact order. Do not skip ahead:
+1. What happened.
+2. Date or timeframe.
+3. Location.
+4. People and organizations involved.
+5. Optional insurance, policy, and claim information.
+6. Injuries, treatment, expenses, property damage, missed work, lost income, emotional effects, and other losses.
+7. One generic optional file-upload step for any relevant documents or evidence. This must come only after steps 1 through 6 are addressed. Ask once whether the user wants to upload any files, such as police or incident reports, medical records or bills, photos, videos, insurance documents, receipts, or correspondence. Do not separate files into categories, ask for each type individually, or revisit file uploads after this step.
+8. Name, optional phone, and preferred contact method. Do not ask for an email address in conversation; account email is collected by the secure sign-in form after the intake.
+9. Consent to store the intake and make contact. If health information or documents are involved, ask for authorization for secure storage and limited sharing with participating attorneys for intake review and attorney matching.
+
+Do not expose your internal checklist. If the user changes an answer, retain the latest version. For immediate danger, advise contacting emergency services. For urgent deadlines, active court matters, criminal exposure, or imminent legal consequences, recommend promptly contacting a licensed attorney.
+
+For the file-upload step, say that the attachment button is available below. Accept one or multiple files together, and continue if the user has no files or wants to upload them later.
+
+When all topics are addressed, say exactly: "Your intake is complete and ready to save. Please use the secure form below to sign in or create an account." Do not ask another question and do not ask the user to speak their email address. Do not read the full intake back unless asked.`;
 
 interface IntakeMessage {
   role: 'user' | 'assistant';
@@ -52,6 +85,12 @@ export const persistConversationalIntake = onCall(
     const userId = request.auth?.uid ?? null;
 
     if (action === 'ensure') {
+      const sessionSnapshot = await sessionRef.get();
+      const storedUserId = sessionSnapshot.data()?.userId;
+      if (storedUserId && storedUserId !== userId) {
+        throw new HttpsError('permission-denied', 'This intake belongs to another user.');
+      }
+
       await sessionRef.set({
         id: sessionRef.id,
         recordType: 'conversational_intake',
@@ -59,8 +98,10 @@ export const persistConversationalIntake = onCall(
         agent: 'conversational-intake',
         intakeStatus: 'in_progress',
         rawAnswers: {},
-        userId,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        userId: storedUserId ?? userId,
+        createdAt: sessionSnapshot.exists
+          ? sessionSnapshot.data()?.createdAt ?? admin.firestore.FieldValue.serverTimestamp()
+          : admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, {merge: true});
       return {sessionId: sessionRef.id};
@@ -116,6 +157,43 @@ export const persistConversationalIntake = onCall(
       return {sessionId: sessionRef.id};
     }
 
+    if (action === 'message') {
+      const message = request.data?.message;
+      if (!validIntakeMessage(message)) {
+        throw new HttpsError('invalid-argument', 'A valid conversation message is required.');
+      }
+
+      const sessionSnapshot = await sessionRef.get();
+      const storedUserId = sessionSnapshot.data()?.userId;
+      if (storedUserId && storedUserId !== userId) {
+        throw new HttpsError('permission-denied', 'This intake belongs to another user.');
+      }
+
+      const batch = admin.firestore().batch();
+      batch.set(sessionRef, {
+        id: sessionRef.id,
+        recordType: 'conversational_intake',
+        displayName: 'Conversational Intake',
+        agent: 'openai-realtime-minerva',
+        intakeStatus: 'in_progress',
+        userId: storedUserId ?? userId,
+        lastMessage: message.content,
+        createdAt: sessionSnapshot.exists
+          ? sessionSnapshot.data()?.createdAt ?? admin.firestore.FieldValue.serverTimestamp()
+          : admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+      batch.set(sessionRef.collection('messages').doc(), {
+        ...message,
+        provider: 'openai',
+        model: 'gpt-realtime-2',
+        source: 'realtime_voice',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+      return {sessionId: sessionRef.id};
+    }
+
     if (action === 'file') {
       const file = request.data?.file;
       if (
@@ -165,6 +243,101 @@ export const persistConversationalIntake = onCall(
     }
 
     throw new HttpsError('invalid-argument', 'Unsupported persistence action.');
+  },
+);
+
+export const createMinervaRealtimeSession = onCall(
+  {
+    region: 'us-central1',
+    maxInstances: 5,
+    memory: '256MiB',
+    timeoutSeconds: 30,
+    secrets: [openAiApiKey],
+  },
+  async (request) => {
+    const apiKey = openAiApiKey.value();
+    if (!apiKey) {
+      throw new HttpsError('failed-precondition', 'OpenAI Realtime is not configured.');
+    }
+
+    const identity = request.auth?.uid
+      ?? request.rawRequest.ip
+      ?? 'anonymous';
+    const safetyIdentifier = createHash('sha256').update(identity).digest('hex');
+
+    const response = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'OpenAI-Safety-Identifier': safetyIdentifier,
+      },
+      body: JSON.stringify({
+        expires_after: {
+          anchor: 'created_at',
+          seconds: 60,
+        },
+        session: {
+          type: 'realtime',
+          model: 'gpt-realtime-2',
+          instructions: minervaRealtimeInstructions,
+          output_modalities: ['audio'],
+          audio: {
+            input: {
+              format: {
+                type: 'audio/pcm',
+                rate: 24000,
+              },
+              transcription: {
+                model: 'gpt-realtime-whisper',
+                language: 'en',
+              },
+              noise_reduction: {
+                type: 'near_field',
+              },
+              turn_detection: {
+                type: 'server_vad',
+                threshold: 0.75,
+                prefix_padding_ms: 300,
+                silence_duration_ms: 700,
+                create_response: false,
+                interrupt_response: false,
+              },
+            },
+            output: {
+              format: {
+                type: 'audio/pcm',
+                rate: 24000,
+              },
+              voice: 'marin',
+            },
+          },
+          tools: [],
+          max_output_tokens: 'inf',
+        },
+      }),
+    });
+
+    const payload = await response.json() as {
+      value?: string;
+      expires_at?: number;
+      error?: {message?: string};
+    };
+
+    if (!response.ok || !payload.value) {
+      console.error('OpenAI Realtime client secret creation failed', {
+        status: response.status,
+        message: payload.error?.message,
+      });
+      throw new HttpsError('internal', 'Unable to start the realtime voice session.');
+    }
+
+    return {
+      value: payload.value,
+      expiresAt: payload.expires_at ?? null,
+      model: 'gpt-realtime-2',
+      voice: 'marin',
+    };
   },
 );
 

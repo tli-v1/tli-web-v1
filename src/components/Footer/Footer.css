@@ -14,3 +14,13 @@
 .footer span:last-child {
   color: #cbd7eb;
 }
+
+@media (max-width: 640px) {
+  .footer {
+    justify-content: center;
+    padding: 1rem;
+    border-radius: 14px;
+    text-align: center;
+    font-size: 0.8rem;
+  }
+}

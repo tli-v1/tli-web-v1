@@ -4,7 +4,8 @@ import {
   ref,
   uploadBytes,
 } from 'firebase/storage';
-import { storage } from '../config/firebase';
+import { getIdToken } from 'firebase/auth';
+import { auth, storage } from '../config/firebase';
 import type { FileUploadParams, FileUploadResponse, SignedUrlResponse } from '../types';
 
 const DEFAULT_FOLDER = 'case-docs';
@@ -29,6 +30,27 @@ function storagePath(folder: string, relativePath: string): string {
   const safeFolder = cleanSegment(folder || DEFAULT_FOLDER);
   const safePath = relativePath.replace(/^\/+/, '');
   return `${safeFolder}/${safePath}`;
+}
+
+function friendlyUploadError(error: unknown): string {
+  const code = (
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && typeof error.code === 'string'
+  ) ? error.code : ''
+
+  if (code === 'storage/unauthorized') {
+    return 'We could not attach that file. Please sign in again and retry.'
+  }
+  if (code === 'storage/canceled') {
+    return 'The file upload was canceled.'
+  }
+  if (code === 'storage/retry-limit-exceeded') {
+    return 'The upload timed out. Check your connection and try again.'
+  }
+
+  return error instanceof Error ? error.message : 'Failed to upload file'
 }
 
 export async function uploadFile({
@@ -58,8 +80,7 @@ export async function uploadFile({
 
     return { path: relativePath, error: null };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to upload file';
-    return { path: null, error: message };
+    return { path: null, error: friendlyUploadError(error) };
   }
 }
 
@@ -76,6 +97,12 @@ export async function uploadConversationalIntakeFile({
     if (!userId || !intakeId) {
       throw new Error('Sign in before attaching files to this intake.');
     }
+
+    const currentUser = auth.currentUser;
+    if (!currentUser || currentUser.uid !== userId) {
+      throw new Error('Sign in before attaching files to this intake.');
+    }
+    await getIdToken(currentUser, true);
 
     const fileName = `${generateFileUuid()}${extensionFor(file.name)}`;
     const relativePath = `${cleanSegment(userId)}/${cleanSegment(intakeId)}/${fileName}`;
@@ -94,8 +121,7 @@ export async function uploadConversationalIntakeFile({
 
     return { path: relativePath, error: null };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to upload file';
-    return { path: null, error: message };
+    return { path: null, error: friendlyUploadError(error) };
   }
 }
 

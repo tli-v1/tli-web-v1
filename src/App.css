@@ -384,11 +384,14 @@ button:active,
 
 @media (max-width: 640px) {
   #root {
-    padding: 1.5rem;
+    padding:
+      max(0.75rem, env(safe-area-inset-top))
+      0.75rem
+      max(0.75rem, env(safe-area-inset-bottom));
   }
 
   .card {
-    padding: 1.75rem;
+    padding: 1.25rem;
   }
 
 }
