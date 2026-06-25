@@ -1,13 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { CircleCheck, Eye, FileText, Lock, Mic, Scale, Settings, Shield, UserCheck } from 'lucide-react'
-import heroLegalSupport from '../../assets/hero-legal-support.png'
+import { Mic } from 'lucide-react'
+import { getInitialIntakeQuestion } from '../../agent/intakeFlow'
+import { preloadConversationalSpeech } from '../../api/speech'
+import { unlockConversationalAudio } from '../../hooks/useSpeechOutput'
+import type { User } from '../../types'
+import { ChatWidget } from '../ChatWidget'
 import Footer from '../Footer'
 import './Landing.css'
 
-function Landing() {
+interface LandingProps {
+  user: User | null
+}
+
+function Landing({ user }: LandingProps) {
   const marketplaceRef = useRef<HTMLElement | null>(null)
   const [isMarketplaceVisible, setIsMarketplaceVisible] = useState(false)
+  const [isIntakeOpen, setIsIntakeOpen] = useState(false)
+
+  useEffect(() => {
+    preloadConversationalSpeech(getInitialIntakeQuestion())
+  }, [])
 
   useEffect(() => {
     const section = marketplaceRef.current
@@ -44,13 +56,38 @@ function Landing() {
 
         <div className="hero-voice-action">
           <div className="hero-voice-highlight">
-            <button className="hero-voice-button" type="button" aria-label="Share what happened">
+            <button
+              className="hero-voice-button"
+              type="button"
+              aria-label="Start conversational intake"
+              onClick={() => {
+                unlockConversationalAudio()
+                setIsIntakeOpen(true)
+              }}
+            >
               <Mic aria-hidden="true" />
             </button>
           </div>
           <span className="hero-voice-label">Share what happened</span>
         </div>
       </section>
+
+      {isIntakeOpen && (
+        <div className="hero-chat-overlay" role="dialog" aria-modal="true" aria-label="Conversational intake">
+          <button
+            className="hero-chat-overlay__backdrop"
+            type="button"
+            aria-label="Close conversational intake"
+            onClick={() => setIsIntakeOpen(false)}
+          />
+          <ChatWidget
+            user={user}
+            variant="hero"
+            intakeMode
+            onClose={() => setIsIntakeOpen(false)}
+          />
+        </div>
+      )}
 
       <Footer />
     </main>

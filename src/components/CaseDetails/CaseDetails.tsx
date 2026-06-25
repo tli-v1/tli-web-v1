@@ -284,8 +284,7 @@ function CaseDetails() {
                     )
                   })}
 
-                  {documents.length > requiredDocuments.length && (
-                    <div className="doc-row">
+                  <div className="doc-row">
                       <input
                         type="file"
                         accept=".pdf,.jpg,.jpeg,.png,.zip"
@@ -297,7 +296,10 @@ function CaseDetails() {
                       />
                         <div>
                           <p className="detail-value">Additional uploads</p>
-                          <p className="detail-label">{documents.length - requiredDocuments.length} extra files</p>
+                          <p className="detail-label">
+                            {Math.max(0, documents.length - completedDocs)} additional file
+                            {Math.max(0, documents.length - completedDocs) === 1 ? '' : 's'}
+                          </p>
                         </div>
                         <div className="doc-actions">
                         <button
@@ -313,7 +315,6 @@ function CaseDetails() {
                         </Link>
                       </div>
                     </div>
-                  )}
                 </div>
                 {viewError && <p className="error">{viewError}</p>}
               </section>

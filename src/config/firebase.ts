@@ -2,6 +2,7 @@ import { getApps, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getAnalytics, type Analytics } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
+import { getFunctions } from "firebase/functions";
 import { getStorage } from "firebase/storage";
 
 
@@ -23,6 +24,7 @@ const existingApps = getApps();
 const app = existingApps.length ? existingApps[0]! : initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const functions = getFunctions(app, 'us-central1');
 const storage = getStorage(app);
 let analyticsInstance: Analytics | null = null;
 
@@ -34,5 +36,5 @@ try {
   console.warn('Analytics not available:', error);
 }
 
-export { app, auth, db, storage };
+export { app, auth, db, functions, storage };
 export const analytics = analyticsInstance;

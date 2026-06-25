@@ -1,38 +1,52 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react'
-import { LucideMaximize2, LucideMic, LucideMicOff, LucideMinimize2 } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import {
-  createCase,
-  createCaseContact,
-  createDamages,
-  createDocument,
-  createIncident,
-  createParties,
-  deleteCase,
-} from '../../api/intake'
-import { ensureUserProfile } from '../../api/userProfile'
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react'
+import {
+  LucideMaximize2,
+  LucideMic,
+  LucideMicOff,
+  LucideMinimize2,
+  Paperclip,
+  Volume2,
+  VolumeX,
+  X,
+} from 'lucide-react'
+import { Link } from 'react-router-dom'
 import {
   applyIntakeAnswerAndAdvance,
   buildIntakeSummary,
   emptyChatIntakeDraft,
+  getAllIntakeQuestions,
   getInitialIntakeQuestion,
   getIntakeQuestion,
   getNextIntakeStep,
-  isChatIntakeComplete,
   isIntakeRequest,
   type ChatIntakeDraft,
   type ChatIntakeStep,
 } from '../../agent/intakeFlow'
-import { analyzeImageRelevance, canAnalyzeImage } from '../../agent/fileRelevance'
-import type { User } from '../../types'
+import { preloadConversationalSpeech } from '../../api/speech'
+import { signInWithPassword, signUp } from '../../api/auth'
 import {
+  addConversationalIntakeFile,
+  ensureConversationalIntakeSession,
   minervaModel,
-  saveMinervaExchange,
-  type MinervaChatMessage,
+  saveConversationalIntakeExchange,
+  type ConversationalIntakeMessage,
+  updateConversationalIntakeProcessing,
 } from '../../agent/initialize'
+import { processIntakeIntoCase } from '../../agent/processIntake'
+import type { StructuredIntake } from '../../agent/processIntake'
 import { isCaseIntakeRelevant, offTopicMessage } from '../../agent/relevance'
-import { removeFiles, uploadFile } from '../../storage/fileUpload'
+import { useSpeechOutput } from '../../hooks/useSpeechOutput'
 import { useVoiceInput } from '../../hooks/useVoiceInput'
+import { uploadConversationalIntakeFile } from '../../storage/fileUpload'
+import type { User } from '../../types'
 import './ChatWidget.css'
 
 interface Message {
@@ -42,350 +56,415 @@ interface Message {
   timestamp: Date
 }
 
-const roundToCents = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100
-
-const currencyNumber = (value: string) => roundToCents(Number(value) || 0)
-
 interface ChatWidgetProps {
   user: User | null
   initialMessage?: string
-  variant?: 'embedded' | 'floating'
+  variant?: 'embedded' | 'floating' | 'hero'
+  intakeMode?: boolean
+  onClose?: () => void
+}
+
+interface AttachedFile {
+  name: string
+  storagePath: string
 }
 
 const welcomeMessageId = 'minerva-welcome'
-const minervaDisclaimer = "This is an automated assistant, not a licensed attorney."
 const defaultInitialMessage =
-  "Hi, I'm Minerva! \n\nI'm here to help you get started on your case. What brings you here today?\n\n"
-const minervaTheme = {
-  navy: '#1a2f5f',
-  navyDark: '#0f1d3c',
-  navySoft: '#27447f',
-  gold: '#f6b400',
-  page: '#f5f7fb',
-  border: '#dbe3f0',
-  muted: '#4b5563',
-  danger: '#b91c1c',
-  dangerSoft: '#fee2e2',
-}
+  "Hi, I'm Minerva. Tell me what happened, and I can guide you through a conversational intake."
+const healthInformationNotice =
+  'Health information notice: Documents may contain medical or other sensitive personal information. By uploading, you authorize True Legal Innovations to securely store the files and share them with participating attorneys solely for intake review and attorney matching. Upload only information you are comfortable sharing. This consent notice does not itself establish HIPAA coverage or replace any formal HIPAA authorization that may be required.'
 
-export function ChatWidget(props: ChatWidgetProps) {
-  const { user, initialMessage, variant = 'embedded' } = props
+export function ChatWidget({
+  user,
+  initialMessage,
+  variant = 'embedded',
+  intakeMode = false,
+  onClose,
+}: ChatWidgetProps) {
+  const startsInIntake = intakeMode
   const [messages, setMessages] = useState<Message[]>([
     {
       id: welcomeMessageId,
       role: 'assistant',
-      content: initialMessage || defaultInitialMessage,
+      content: initialMessage || (startsInIntake ? getInitialIntakeQuestion() : defaultInitialMessage),
       timestamp: new Date(),
     },
   ])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [isManualInput, setIsManualInput] = useState(false)
   const [isOpen, setIsOpen] = useState(variant !== 'floating')
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false)
+  const [isProcessingIntake, setIsProcessingIntake] = useState(false)
+  const [awaitingProcessingSignIn, setAwaitingProcessingSignIn] = useState(false)
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin')
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authLoading, setAuthLoading] = useState(false)
+  const [authError, setAuthError] = useState('')
+  const [healthNoticeAccepted, setHealthNoticeAccepted] = useState(false)
+  const [processedCaseId, setProcessedCaseId] = useState('')
+  const [processedIntake, setProcessedIntake] = useState<StructuredIntake | null>(null)
+  const [processingError, setProcessingError] = useState('')
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [intakeDraft, setIntakeDraft] = useState<ChatIntakeDraft>(emptyChatIntakeDraft)
-  const [intakeStep, setIntakeStep] = useState<ChatIntakeStep | null>(null)
-  const [intakeAwaitingAccount, setIntakeAwaitingAccount] = useState(false)
-  const [intakeSubmitting, setIntakeSubmitting] = useState(false)
-  const [attachedFiles, setAttachedFiles] = useState<File[]>([])
-  const [filesAnalyzing, setFilesAnalyzing] = useState(false)
+  const [intakeStep, setIntakeStep] = useState<ChatIntakeStep | null>(
+    startsInIntake ? 'whatHappened' : null,
+  )
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const pendingSubmitRef = useRef(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef('')
+  const manualInputRef = useRef(false)
+  const autoSubmitTimerRef = useRef<number | null>(null)
+  const sendMessageRef = useRef<(content?: string) => void>(() => undefined)
+  const speakRef = useRef<(content: string) => void>(() => undefined)
+  const resumeListeningRef = useRef(false)
 
-  const scrollToBottom = () => {
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  useEffect(() => {
-    scrollToBottom()
   }, [messages])
-
-  useEffect(() => {
-    if (!user?.email) return
-    setIntakeDraft((prev) => prev.email ? prev : { ...prev, email: user.email })
-  }, [user?.email])
 
   useEffect(() => {
     const textarea = textareaRef.current
     if (!textarea) return
-
     textarea.style.height = '44px'
-    const nextHeight = Math.min(Math.max(textarea.scrollHeight, 44), 120)
-    textarea.style.height = `${nextHeight}px`
-    textarea.style.overflowY = textarea.scrollHeight > 120 ? 'auto' : 'hidden'
+    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 44), 120)}px`
   }, [input])
 
-  const appendAssistantMessage = useCallback((content: string) => {
-    const assistantMessage: Message = {
+  useEffect(() => {
+    return () => {
+      if (autoSubmitTimerRef.current !== null) {
+        window.clearTimeout(autoSubmitTimerRef.current)
+      }
+    }
+  }, [])
+
+  const appendAssistantMessage = useCallback((content: string, spokenContent = content) => {
+    const message: Message = {
       id: crypto.randomUUID(),
       role: 'assistant',
       content,
       timestamp: new Date(),
     }
-    setMessages((prev) => [...prev, assistantMessage])
-    return assistantMessage
+    setMessages((current) => [...current, message])
+    speakRef.current(spokenContent)
+    return message
   }, [])
-
-  const handleVoiceTranscript = useCallback((transcript: string) => {
-    setInput((prev) => `${prev}${prev.trim() ? ' ' : ''}${transcript}`.trim())
-  }, [])
-
-  const handleVoiceError = useCallback((message: string) => {
-    appendAssistantMessage(message)
-  }, [appendAssistantMessage])
 
   const voiceInput = useVoiceInput({
-    onTranscript: handleVoiceTranscript,
-    onError: handleVoiceError,
+    onTranscript: useCallback((transcript: string) => {
+      if (manualInputRef.current) return
+
+      const nextInput = `${inputRef.current}${inputRef.current.trim() ? ' ' : ''}${transcript}`.trim()
+      inputRef.current = nextInput
+      setInput(nextInput)
+
+      if (autoSubmitTimerRef.current !== null) {
+        window.clearTimeout(autoSubmitTimerRef.current)
+      }
+      autoSubmitTimerRef.current = window.setTimeout(() => {
+        autoSubmitTimerRef.current = null
+        if (!manualInputRef.current) {
+          sendMessageRef.current(inputRef.current)
+        }
+      }, 1200)
+    }, []),
+    onError: useCallback((message: string) => {
+      appendAssistantMessage(message)
+    }, [appendAssistantMessage]),
   })
 
-  const resetIntake = useCallback(() => {
-    setIntakeDraft(emptyChatIntakeDraft)
-    setIntakeStep(null)
-    setIntakeAwaitingAccount(false)
-    setAttachedFiles([])
-    pendingSubmitRef.current = false
+  const speechOutput = useSpeechOutput({
+    onStart: useCallback(() => {
+      resumeListeningRef.current = voiceInput.enabled && !manualInputRef.current
+      if (voiceInput.enabled) voiceInput.stop()
+    }, [voiceInput]),
+    onEnd: useCallback(() => {
+      if (resumeListeningRef.current && !manualInputRef.current) {
+        resumeListeningRef.current = false
+        voiceInput.start()
+      }
+    }, [voiceInput]),
+  })
+
+  speakRef.current = speechOutput.speak
+
+  useEffect(() => {
+    const welcomeMessage = messages.find((message) => message.id === welcomeMessageId)
+    if (welcomeMessage) speechOutput.speak(welcomeMessage.content)
+    getAllIntakeQuestions().forEach(preloadConversationalSpeech)
+    // The welcome prompt should play once when the conversation opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const submitChatIntake = useCallback(async (draft: ChatIntakeDraft, submittingUser: User) => {
-    setIntakeSubmitting(true)
-    let createdCaseId = ''
-    const uploadedStoragePaths: string[] = []
+  const persistExchange = useCallback(
+    (
+      userMessage: Message,
+      assistantMessage: Message,
+      intake?: { step: ChatIntakeStep; answer: string; complete: boolean },
+    ) => {
+      return saveConversationalIntakeExchange({
+        sessionId,
+        userId: user?.id,
+        userMessage: toConversationalIntakeMessage(userMessage),
+        assistantMessage: toConversationalIntakeMessage(assistantMessage),
+        intake,
+      })
+        .then((savedSessionId) => {
+          setSessionId(savedSessionId)
+          return savedSessionId
+        })
+        .catch((error) => console.warn('Unable to save intake conversation:', error))
+    },
+    [sessionId, user?.id],
+  )
+
+  const processCompletedIntake = useCallback(async (
+    completedDraft: ChatIntakeDraft,
+    completedSessionId: string,
+    processingUser: User,
+  ) => {
+    setIsProcessingIntake(true)
+    setProcessingError('')
+    setProcessedCaseId('')
+    setProcessedIntake(null)
+    setAwaitingProcessingSignIn(false)
+    await updateConversationalIntakeProcessing(completedSessionId, {
+      status: 'processing',
+    })
 
     try {
-      await ensureUserProfile({
-        userId: submittingUser.id,
-        fullName: draft.fullName,
-        phone: draft.phone,
-        role: 'client',
+      const processed = await processIntakeIntoCase({
+        draft: completedDraft,
+        files: attachedFiles,
+        user: processingUser,
       })
-
-      const { data: caseData, error: caseError } = await createCase({
-        userId: submittingUser.id,
-        consentStore: draft.consentProcess,
-        consentContact: draft.consentContact,
+      await updateConversationalIntakeProcessing(completedSessionId, {
+        status: 'processed',
+        structuredData: processed.structured,
+        caseId: processed.caseId,
       })
-      if (caseError || !caseData) throw new Error(caseError || 'Unable to create case.')
-      createdCaseId = caseData.id
-
-      const [incidentResult, damagesResult, contactResult, partiesResult] = await Promise.all([
-        createIncident({
-          case_id: createdCaseId,
-          description: draft.whatHappened,
-          incident_date: draft.incidentDate,
-          city: draft.city,
-          state_code: draft.state,
-        }),
-        createDamages({
-          case_id: createdCaseId,
-          medical_bills_usd: currencyNumber(draft.medicalBills),
-          days_missed: Number(draft.daysMissed) || 0,
-          hourly_rate_usd: currencyNumber(draft.hourlyRate),
-        }),
-        createCaseContact({
-          case_id: createdCaseId,
-          full_name: draft.fullName,
-          method: draft.preferredContact,
-          email: draft.email,
-          phone: draft.phone || null,
-        }),
-        createParties([
-          {
-            case_id: createdCaseId,
-            role: 'defendant',
-            name: draft.adverseParty || 'Unknown party',
-          },
-          ...(draft.insurerName && draft.insurerName !== 'None'
-            ? [
-                {
-                  case_id: createdCaseId,
-                  role: 'insurer',
-                  name: draft.insurerName,
-                  insurer_name: draft.insurerName,
-                  policy_number: draft.policyNumber || null,
-                  claim_number: draft.claimNumber || null,
-                },
-              ]
-            : []),
-        ]),
-      ])
-
-      const firstError =
-        incidentResult.error || damagesResult.error || contactResult.error || partiesResult.error
-      if (firstError) throw new Error(firstError)
-
-      for (const file of attachedFiles) {
-        const { path, error: storageError } = await uploadFile({
-          bucket: 'case-docs',
-          file,
-          userId: submittingUser.id,
-          caseId: createdCaseId,
-        })
-        if (storageError || !path) throw new Error(storageError || 'Unable to upload file.')
-        uploadedStoragePaths.push(path)
-
-        const { error: documentError } = await createDocument({
-          case_id: createdCaseId,
-          kind: documentKindFor(file),
-          original_filename: file.name,
-          storage_path: `case-docs/${path}`,
-          uploaded_by: submittingUser.id,
-        })
-        if (documentError) throw new Error(documentError)
-      }
-
-      const fileNote = attachedFiles.length ? ` I also uploaded ${attachedFiles.length} file${attachedFiles.length === 1 ? '' : 's'}.` : ''
-      appendAssistantMessage(`Your intake has been submitted.${fileNote}`)
-      resetIntake()
+      setProcessedCaseId(processed.caseId)
+      setProcessedIntake(processed.structured)
+      appendAssistantMessage(
+        `Your intake has been processed and added to your dashboard. Case ID: ${processed.caseId}`,
+        'Your intake has been processed and added to your dashboard.',
+      )
     } catch (error) {
-      if (createdCaseId) {
-        await deleteCase(createdCaseId)
-      }
-      if (uploadedStoragePaths.length) {
-        await removeFiles('case-docs', uploadedStoragePaths)
-      }
-      appendAssistantMessage(error instanceof Error ? error.message : 'Unable to submit your intake.')
+      const message = error instanceof Error ? error.message : 'Unable to process this intake.'
+      setProcessingError(message)
+      await updateConversationalIntakeProcessing(completedSessionId, {
+        status: 'failed',
+        error: message,
+      }).catch(() => undefined)
+      appendAssistantMessage(
+        `Your conversation is saved, but I could not finish creating the dashboard case: ${message}`,
+      )
     } finally {
-      setIntakeSubmitting(false)
+      setIsProcessingIntake(false)
     }
-  }, [appendAssistantMessage, attachedFiles, resetIntake])
+  }, [appendAssistantMessage, attachedFiles])
 
   useEffect(() => {
     if (
       !user
-      || !intakeAwaitingAccount
-      || !isChatIntakeComplete(intakeDraft)
-      || intakeSubmitting
-      || pendingSubmitRef.current
+      || !awaitingProcessingSignIn
+      || !sessionId
+      || getNextIntakeStep(intakeDraft) !== null
+      || isProcessingIntake
     ) return
 
-    pendingSubmitRef.current = true
-    appendAssistantMessage('You are signed in now. I am submitting your intake.')
-    setIntakeAwaitingAccount(false)
-    submitChatIntake(intakeDraft, user).finally(() => {
-      pendingSubmitRef.current = false
-    })
-  }, [appendAssistantMessage, intakeAwaitingAccount, intakeDraft, intakeSubmitting, submitChatIntake, user])
+    void processCompletedIntake(intakeDraft, sessionId, user)
+  }, [
+    awaitingProcessingSignIn,
+    intakeDraft,
+    isProcessingIntake,
+    processCompletedIntake,
+    sessionId,
+    user,
+  ])
 
   const handleAttachFiles = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
-    if (!files.length) return
     event.target.value = ''
+    if (!files.length) return
 
-    setFilesAnalyzing(true)
-    const acceptedFiles: File[] = []
-    const rejectedFiles: string[] = []
+    if (!user) {
+      appendAssistantMessage('Please sign in before attaching files so we can store them securely with your intake.')
+      return
+    }
 
+    setIsUploadingFiles(true)
     try {
+      const activeSessionId = await ensureConversationalIntakeSession(sessionId, user.id)
+      setSessionId(activeSessionId)
+
       for (const file of files) {
-        if (!canAnalyzeImage(file)) {
-          acceptedFiles.push(file)
-          continue
+        const upload = await uploadConversationalIntakeFile({
+          file,
+          userId: user.id,
+          intakeId: activeSessionId,
+        })
+        if (upload.error || !upload.path) {
+          throw new Error(upload.error || `Unable to upload ${file.name}.`)
         }
 
-        const review = await analyzeImageRelevance(file)
-        if (review.relevant) {
-          acceptedFiles.push(file)
-          continue
-        }
-
-        rejectedFiles.push(`${file.name}: ${review.reason}`)
+        const storagePath = `conversational-intakes/${upload.path}`
+        await addConversationalIntakeFile(activeSessionId, {
+          name: file.name,
+          contentType: file.type || 'application/octet-stream',
+          size: file.size,
+          storagePath,
+        })
+        setAttachedFiles((current) => [...current, { name: file.name, storagePath }])
       }
-
-      if (acceptedFiles.length) {
-        setAttachedFiles((prev) => [...prev, ...acceptedFiles])
-        if (intakeStep === 'documents') {
-          setIntakeDraft((prev) => ({ ...prev, authorizeDocuments: true }))
-        }
-      }
-
-      if (rejectedFiles.length) {
-        appendAssistantMessage(`I did not attach ${rejectedFiles.length === 1 ? 'that image' : 'those images'} because ${rejectedFiles.join('; ')}. Please upload documents, photos, or evidence connected to the case.`)
-      } else if (acceptedFiles.some((file) => canAnalyzeImage(file))) {
-        appendAssistantMessage(`I reviewed and attached ${acceptedFiles.length} file${acceptedFiles.length === 1 ? '' : 's'} for this intake.`)
-      }
+    } catch (error) {
+      appendAssistantMessage(error instanceof Error ? error.message : 'Unable to attach that file.')
     } finally {
-      setFilesAnalyzing(false)
+      setIsUploadingFiles(false)
     }
   }
 
-  const removeAttachedFile = (indexToRemove: number) => {
-    setAttachedFiles((prev) => prev.filter((_, index) => index !== indexToRemove))
+  const handleInlineAuth = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const email = authEmail.trim()
+
+    if (!email) {
+      setAuthError('Enter your email address.')
+      return
+    }
+    if (authPassword.length < 6) {
+      setAuthError('Password must be at least 6 characters.')
+      return
+    }
+
+    setAuthLoading(true)
+    setAuthError('')
+    try {
+      const response = authMode === 'signup'
+        ? await signUp(email, authPassword)
+        : await signInWithPassword(email, authPassword)
+
+      if (response.error) {
+        if (response.error.code === 'auth/email-already-in-use') {
+          setAuthMode('signin')
+        }
+        throw new Error(response.error.message)
+      }
+
+      appendAssistantMessage(
+        authMode === 'signup'
+          ? 'Your account is ready. I’m processing the intake for your dashboard now.'
+          : 'You’re signed in. I’m processing the intake for your dashboard now.',
+      )
+      setAuthPassword('')
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Authentication failed.')
+    } finally {
+      setAuthLoading(false)
+    }
   }
 
-  const sendMessage = async () => {
-    if (!input.trim() || isLoading || intakeSubmitting || filesAnalyzing) return
+  const handleIntakeAnswer = async (
+    userMessage: Message,
+    activeStep: ChatIntakeStep,
+  ) => {
+    const result = applyIntakeAnswerAndAdvance(
+      intakeDraft,
+      activeStep,
+      userMessage.content,
+      {
+        userEmail: user?.email,
+        attachedFileCount: attachedFiles.length,
+      },
+    )
+
+    if (!result.accepted) {
+      const assistantMessage = appendAssistantMessage(
+        result.message || getIntakeQuestion(activeStep),
+      )
+      persistExchange(userMessage, assistantMessage)
+      return
+    }
+
+    setIntakeDraft(result.draft)
+    const nextStep = getNextIntakeStep(result.draft)
+    setIntakeStep(nextStep)
+
+    const assistantContent = nextStep
+      ? getIntakeQuestion(nextStep)
+      : `${buildIntakeSummary(result.draft)}\n\nYour conversational intake has been saved. We can structure and review these details later without making you repeat the story.`
+    const assistantMessage = appendAssistantMessage(
+      assistantContent,
+      nextStep
+        ? assistantContent
+        : 'Your conversational intake is complete and has been saved. We can review and structure the details later without making you repeat your story.',
+    )
+
+    const savedSessionId = await persistExchange(userMessage, assistantMessage, {
+      step: activeStep,
+      answer: userMessage.content,
+      complete: nextStep === null,
+    })
+
+    if (nextStep === null && savedSessionId) {
+      if (user) {
+        appendAssistantMessage(
+          'I’m processing your intake now and preparing it for your dashboard.',
+        )
+        await processCompletedIntake(result.draft, savedSessionId, user)
+      } else {
+        setAwaitingProcessingSignIn(true)
+        appendAssistantMessage(
+          'Your conversation is saved. Sign in or create an account below, and I’ll process it into a dashboard case.',
+        )
+      }
+    }
+  }
+
+  const sendMessage = async (providedContent?: string) => {
+    const content = (providedContent ?? inputRef.current).trim()
+    if (!content || isLoading) return
+
+    if (autoSubmitTimerRef.current !== null) {
+      window.clearTimeout(autoSubmitTimerRef.current)
+      autoSubmitTimerRef.current = null
+    }
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: input.trim(),
+      content,
       timestamp: new Date(),
     }
-
     const nextMessages = [...messages, userMessage]
-
     setMessages(nextMessages)
+    inputRef.current = ''
     setInput('')
 
-    const activeIntakeStep = intakeStep ?? (isIntakeRequest(userMessage.content) ? 'whatHappened' : null)
-    if (activeIntakeStep) {
-      if (!intakeStep && /^(start|begin|create|submit)/i.test(userMessage.content.trim())) {
+    const activeStep = intakeStep ?? (isIntakeRequest(content) ? 'whatHappened' : null)
+    if (activeStep) {
+      if (!intakeStep && /^(start|begin|create|submit)/i.test(content)) {
         setIntakeStep('whatHappened')
-        appendAssistantMessage(getInitialIntakeQuestion())
+        const assistantMessage = appendAssistantMessage(getInitialIntakeQuestion())
+        persistExchange(userMessage, assistantMessage)
         return
       }
-
-      const result = applyIntakeAnswerAndAdvance(intakeDraft, activeIntakeStep, userMessage.content, {
-        attachedFileCount: attachedFiles.length,
-        userEmail: user?.email,
-      })
-      setIntakeDraft(result.draft)
-
-      if (!result.accepted) {
-        setIntakeStep(activeIntakeStep)
-        appendAssistantMessage(result.message || getIntakeQuestion(activeIntakeStep))
-        return
-      }
-
-      const nextStep = getNextIntakeStep(result.draft)
-      if (nextStep) {
-        setIntakeStep(nextStep)
-        appendAssistantMessage(getIntakeQuestion(nextStep))
-        return
-      }
-
-      setIntakeStep(null)
-      const summary = buildIntakeSummary(result.draft)
-      const attachmentSummary = attachedFiles.length
-        ? `\nFiles attached: ${attachedFiles.map((file) => file.name).join(', ')}`
-        : ''
-      if (!user) {
-        setIntakeAwaitingAccount(true)
-        appendAssistantMessage(`${summary}${attachmentSummary}\n\nTo submit this, create an account or sign in from the dashboard. Once you are signed in, I will automatically create the case and upload the attached files. Keep this tab open while you sign in so the files stay attached.`)
-        return
-      }
-
-      appendAssistantMessage(`${summary}${attachmentSummary}\n\nSubmitting this intake now.`)
-      await submitChatIntake(result.draft, user)
+      await handleIntakeAnswer(userMessage, activeStep)
       return
     }
 
-    if (!isCaseIntakeRelevant(userMessage.content)) {
-      const assistantMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: offTopicMessage,
-        timestamp: new Date(),
-      }
-      setMessages([...nextMessages, assistantMessage])
+    if (!isCaseIntakeRelevant(content)) {
+      const assistantMessage = appendAssistantMessage(offTopicMessage)
+      persistExchange(userMessage, assistantMessage)
       return
     }
 
     setIsLoading(true)
-
     try {
       const history = nextMessages
         .filter((message) => message.id !== welcomeMessageId)
@@ -394,472 +473,355 @@ export function ChatWidget(props: ChatWidgetProps) {
           role: message.role === 'user' ? 'user' as const : 'model' as const,
           parts: [{ text: message.content }],
         }))
-
       const chat = minervaModel.startChat({ history })
-      const result = await chat.sendMessage(userMessage.content)
-      const aiMessage =
-        result.response.text() ||
-        "I'm sorry, I couldn't process that. Could you rephrase?"
-
-      const assistantMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: aiMessage,
-        timestamp: new Date(),
-      }
-
-      setMessages((prev) => [...prev, assistantMessage])
-
-      saveMinervaExchange({
-        sessionId,
-        userId: user?.id,
-        userMessage: toMinervaMessage(userMessage),
-        assistantMessage: toMinervaMessage(assistantMessage),
-      })
-        .then(setSessionId)
-        .catch((error) => {
-          console.warn('Unable to save Minerva chat exchange:', error)
-        })
+      const result = await chat.sendMessage(content)
+      const assistantMessage = appendAssistantMessage(
+        result.response.text() || "I couldn't process that. Could you rephrase it?",
+      )
+      persistExchange(userMessage, assistantMessage)
     } catch (error) {
       console.error('Chat error:', error)
-      const errorMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: "I'm having trouble connecting right now. Please try again in a moment.",
-        timestamp: new Date(),
-      }
-      setMessages((prev) => [...prev, errorMessage])
+      appendAssistantMessage("I'm having trouble connecting right now. Please try again.")
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      void sendMessage()
-    }
+  sendMessageRef.current = (content?: string) => {
+    void sendMessage(content)
   }
 
-  const handleChatSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    void sendMessage()
+  const close = () => {
+    if (autoSubmitTimerRef.current !== null) {
+      window.clearTimeout(autoSubmitTimerRef.current)
+      autoSubmitTimerRef.current = null
+    }
+    voiceInput.stop()
+    speechOutput.stop()
+    setIsFullscreen(false)
+    setIsOpen(false)
+    onClose?.()
   }
 
   if (!isOpen && variant === 'floating') {
     return (
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        style={{
-          position: 'fixed',
-          right: '24px',
-          bottom: '24px',
-          zIndex: 50,
-          padding: '14px 18px',
-          borderRadius: '999px',
-          border: 'none',
-          backgroundColor: minervaTheme.navySoft,
-          color: 'white',
-          fontSize: '14px',
-          fontWeight: 700,
-          boxShadow: '0 12px 30px rgba(15, 29, 60, 0.28)',
-          cursor: 'pointer',
-        }}
-      >
+      <button className="chat-launcher" type="button" onClick={() => setIsOpen(true)}>
         Ask Minerva
       </button>
     )
   }
 
-  const defaultContainerStyle =
-    variant === 'floating'
-      ? {
-          position: 'fixed' as const,
-          right: '24px',
-          bottom: '24px',
-          zIndex: 50,
-          width: 'min(420px, calc(100vw - 32px))',
-          height: 'min(620px, calc(100vh - 48px))',
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          boxShadow: '0 20px 60px rgba(15,23,42,0.22)',
-          display: 'flex',
-          flexDirection: 'column' as const,
-          overflow: 'hidden',
-          border: `1px solid ${minervaTheme.border}`,
-        }
-      : {
-          width: '100%',
-          maxWidth: '1000px',
-          height: 'calc(100vh - 180px)',
-          minHeight: '600px',
-          margin: '0 auto',
-          backgroundColor: 'white',
-          borderRadius: '12px',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
-          display: 'flex',
-          flexDirection: 'column' as const,
-          overflow: 'hidden',
-          border: `1px solid ${minervaTheme.border}`,
-        }
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!manualInputRef.current) return
+    void sendMessage(inputRef.current)
+  }
 
-  const containerStyle = isFullscreen
-    ? {
-        position: 'fixed' as const,
-        inset: 0,
-        zIndex: 1000,
-        width: '100vw',
-        height: '100dvh',
-        minHeight: 0,
-        maxWidth: 'none',
-        margin: 0,
-        backgroundColor: 'white',
-        borderRadius: 0,
-        boxShadow: 'none',
-        display: 'flex',
-        flexDirection: 'column' as const,
-        overflow: 'hidden',
-        border: 'none',
-      }
-    : defaultContainerStyle
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (manualInputRef.current && event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      void sendMessage(inputRef.current)
+    }
+  }
+
+  const useManualInput = () => {
+    manualInputRef.current = true
+    setIsManualInput(true)
+    if (autoSubmitTimerRef.current !== null) {
+      window.clearTimeout(autoSubmitTimerRef.current)
+      autoSubmitTimerRef.current = null
+    }
+    voiceInput.stop()
+    speechOutput.stop()
+  }
+
+  const toggleVoiceInput = () => {
+    manualInputRef.current = false
+    setIsManualInput(false)
+    speechOutput.stop()
+    voiceInput.toggle()
+  }
 
   return (
-    <>
-      {isOpen && (
-        <div
-          className="chat-widget"
-          style={containerStyle}
-        >
-          <div
-            style={{
-              padding: '16px 20px',
-              backgroundColor: minervaTheme.navySoft,
-              color: 'white',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
+    <section
+      className={`chat-widget chat-widget--${variant}${isFullscreen ? ' chat-widget--fullscreen' : ''}`}
+      aria-label="Conversational legal intake"
+    >
+      <header className="chat-widget__header">
+        <div>
+          <h2>Share what happened</h2>
+          <p>Conversational intake · voice or text</p>
+        </div>
+        <div className="chat-widget__header-actions">
+          <button
+            type="button"
+            onClick={speechOutput.toggleMuted}
+            aria-label={speechOutput.muted ? 'Unmute Minerva' : 'Mute Minerva'}
+            aria-pressed={speechOutput.muted}
+            title={speechOutput.muted ? 'Turn voice responses on' : 'Turn voice responses off'}
           >
-            <div>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>Minerva</h3>
-              <p style={{ margin: '4px 0 0 0', fontSize: '13px', opacity: 0.9 }}>
-                Legal Assistant
-              </p>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button
-                type="button"
-                onClick={() => setIsFullscreen((prev) => !prev)}
-                aria-label={isFullscreen ? 'Exit fullscreen chat' : 'Open fullscreen chat'}
-                title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'white',
-                  cursor: 'pointer',
-                  padding: '0',
-                  width: '32px',
-                  height: '32px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: '8px',
-                }}
-              >
-                {isFullscreen ? (
-                  <LucideMinimize2 aria-hidden="true" width={19} height={19} strokeWidth={2.25} />
-                ) : (
-                  <LucideMaximize2 aria-hidden="true" width={19} height={19} strokeWidth={2.25} />
-                )}
-              </button>
-              <button
-                onClick={() => {
-                  setIsFullscreen(false)
-                  setIsOpen(false)
-                }}
-                aria-label="Close chat"
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'white',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  padding: '0',
-                  width: '32px',
-                  height: '32px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                x
-              </button>
-            </div>
-          </div>
+            {speechOutput.muted ? <VolumeX /> : <Volume2 />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsFullscreen((current) => !current)}
+            aria-label={isFullscreen ? 'Exit fullscreen chat' : 'Open fullscreen chat'}
+          >
+            {isFullscreen ? <LucideMinimize2 /> : <LucideMaximize2 />}
+          </button>
+          <button type="button" onClick={close} aria-label="Close chat">
+            <X />
+          </button>
+        </div>
+      </header>
 
-          <div
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '20px',
-              backgroundColor: minervaTheme.page,
-            }}
+      <div className="chat-widget__messages" aria-live="polite">
+        {messages.map((message) => (
+          <article
+            key={message.id}
+            className={`chat-message chat-message--${message.role}`}
           >
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                style={{
-                  marginBottom: '16px',
-                  display: 'flex',
-                  justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start',
-                }}
-              >
-                <div
-                  style={{
-                    maxWidth: '70%',
-                    padding: '12px 16px',
-                    borderRadius: '12px',
-                    backgroundColor: message.role === 'user' ? minervaTheme.navy : 'white',
-                    color: message.role === 'user' ? 'white' : minervaTheme.navyDark,
-                    border: message.role === 'user' ? 'none' : `1px solid ${minervaTheme.border}`,
-                    boxShadow: '0 1px 2px rgba(15, 29, 60, 0.06)',
-                  }}
-                >
-                  <p style={{ margin: 0, fontSize: '14px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{message.content}</p>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-end',
-                      justifyContent: message.id === welcomeMessageId && message.role === 'assistant' ? 'space-between' : 'flex-start',
-                      gap: '12px',
-                      marginTop: '8px',
-                    }}
-                  >
-                    <p
-                      style={{
-                        margin: 0,
-                        fontSize: '11px',
-                        opacity: 0.7,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                    {message.id === welcomeMessageId && message.role === 'assistant' && (
-                      <p
-                        style={{
-                          margin: 0,
-                          fontSize: '11px',
-                          lineHeight: '1.3',
-                          color: minervaTheme.muted,
-                          textAlign: 'right',
-                        }}
-                      >
-                        {minervaDisclaimer}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-            {isLoading && (
-              <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '16px' }}>
-                <div
-                  style={{
-                    padding: '12px 16px',
-                    borderRadius: '12px',
-                    backgroundColor: 'white',
-                    border: `1px solid ${minervaTheme.border}`,
-                    boxShadow: '0 1px 2px rgba(15, 29, 60, 0.06)',
-                  }}
-                >
-                  <p style={{ margin: 0, fontSize: '14px', color: minervaTheme.muted }}>Typing...</p>
-                </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          <div
-            style={{
-              padding: '16px 20px',
-              backgroundColor: 'white',
-              borderTop: `1px solid ${minervaTheme.border}`,
-            }}
-          >
-            {intakeAwaitingAccount && !user && (
-              <Link
-                to="/dashboard"
-                style={{
-                  display: 'block',
-                  marginBottom: '12px',
-                  color: minervaTheme.navy,
-                  fontSize: '14px',
-                  fontWeight: 700,
-                  textDecoration: 'none',
-                }}
-              >
-                Create account or sign in to submit
-              </Link>
-            )}
-            {(intakeStep === 'documents' || attachedFiles.length > 0) && (
-              <div style={{ marginBottom: '12px' }}>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept=".pdf,.jpg,.jpeg,.png,.heic,.zip"
-                  onChange={handleAttachFiles}
-                  style={{ display: 'none' }}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={intakeSubmitting || filesAnalyzing}
-                  style={{
-                    border: `1px solid ${minervaTheme.border}`,
-                    borderRadius: '8px',
-                    backgroundColor: '#fff',
-                    color: minervaTheme.navyDark,
-                    cursor: intakeSubmitting || filesAnalyzing ? 'not-allowed' : 'pointer',
-                    fontSize: '13px',
-                    fontWeight: 700,
-                    padding: '8px 12px',
-                  }}
-                >
-                  {filesAnalyzing ? 'Reviewing files...' : 'Attach files'}
+            <p>{message.content}</p>
+            <div className="chat-message__meta">
+              <time>{message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
+              {message.role === 'assistant' && message.id === messages.at(-1)?.id && speechOutput.supported && (
+                <button type="button" onClick={() => speechOutput.speak(message.content)}>
+                  {speechOutput.speaking ? 'Speaking…' : 'Replay'}
                 </button>
-                {attachedFiles.length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
-                    {attachedFiles.map((file, index) => (
-                      <button
-                        key={`${file.name}-${file.lastModified}-${index}`}
-                        type="button"
-                        onClick={() => removeAttachedFile(index)}
-                        disabled={intakeSubmitting || filesAnalyzing}
-                        title="Remove file"
-                        style={{
-                          border: `1px solid ${minervaTheme.border}`,
-                          borderRadius: '999px',
-                          backgroundColor: minervaTheme.page,
-                          color: minervaTheme.navySoft,
-                          cursor: intakeSubmitting || filesAnalyzing ? 'not-allowed' : 'pointer',
-                          fontSize: '12px',
-                          padding: '5px 9px',
-                        }}
-                      >
-                        {file.name} x
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            <form onSubmit={handleChatSubmit} style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              )}
+            </div>
+          </article>
+        ))}
+        {isLoading && <div className="chat-widget__typing">Thinking…</div>}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {awaitingProcessingSignIn && !user && (
+        <form className="chat-widget__auth" onSubmit={handleInlineAuth}>
+          <div className="chat-widget__auth-heading">
+            <div>
+              <h3>{authMode === 'signup' ? 'Create your account' : 'Sign in to finish'}</h3>
+              <p>Your saved conversation will be processed into a dashboard case after sign-in.</p>
+            </div>
+            <div className="chat-widget__auth-toggle">
               <button
                 type="button"
-                onClick={voiceInput.toggle}
-                disabled={!voiceInput.supported || isLoading || intakeSubmitting || filesAnalyzing}
-                title={voiceInput.supported ? 'Voice mode' : 'Voice input is not supported in this browser'}
-                aria-label={voiceInput.enabled ? 'Turn off voice mode' : 'Turn on voice mode'}
-                aria-pressed={voiceInput.enabled}
-                style={{
-                  width: '44px',
-                  minWidth: '44px',
-                  height: '44px',
-                  border: `1px solid ${minervaTheme.border}`,
-                  borderRadius: '8px',
-                  backgroundColor: voiceInput.enabled ? minervaTheme.dangerSoft : '#fff',
-                  color: voiceInput.enabled ? minervaTheme.danger : minervaTheme.navyDark,
-                  cursor: voiceInput.supported && !isLoading && !intakeSubmitting && !filesAnalyzing ? 'pointer' : 'not-allowed',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  lineHeight: 0,
+                className={authMode === 'signin' ? 'is-active' : ''}
+                onClick={() => {
+                  setAuthMode('signin')
+                  setAuthError('')
                 }}
               >
-                {voiceInput.enabled ? (
-                  <LucideMicOff
-                    aria-hidden="true"
-                    width={20}
-                    height={20}
-                    color={minervaTheme.danger}
-                    strokeWidth={2.25}
-                    style={{ display: 'block', width: '20px', height: '20px', minWidth: '20px' }}
-                  />
-                ) : (
-                  <LucideMic
-                    aria-hidden="true"
-                    width={20}
-                    height={20}
-                    color={minervaTheme.navyDark}
-                    strokeWidth={2.25}
-                    style={{ display: 'block', width: '20px', height: '20px', minWidth: '20px' }}
-                  />
-                )}
+                Sign in
               </button>
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask Minerva..."
-                disabled={isLoading || intakeSubmitting || filesAnalyzing}
-                enterKeyHint="send"
-                style={{
-                  flex: 1,
-                  minHeight: '44px',
-                  padding: '11px 12px',
-                  border: `1px solid ${minervaTheme.border}`,
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  lineHeight: '20px',
-                  resize: 'none',
-                  maxHeight: '120px',
-                  fontFamily: 'inherit',
-                  overflowY: 'hidden',
+              <button
+                type="button"
+                className={authMode === 'signup' ? 'is-active' : ''}
+                onClick={() => {
+                  setAuthMode('signup')
+                  setAuthError('')
                 }}
-                rows={1}
+              >
+                Create account
+              </button>
+            </div>
+          </div>
+          <div className="chat-widget__auth-fields">
+            <label>
+              <span>Email</span>
+              <input
+                type="email"
+                value={authEmail}
+                onChange={(event) => setAuthEmail(event.target.value)}
+                autoComplete="email"
+                disabled={authLoading}
+                required
+              />
+            </label>
+            <label>
+              <span>Password</span>
+              <input
+                type="password"
+                value={authPassword}
+                onChange={(event) => setAuthPassword(event.target.value)}
+                autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
+                disabled={authLoading}
+                minLength={6}
+                required
+              />
+            </label>
+            <button className="chat-widget__auth-submit" type="submit" disabled={authLoading}>
+              {authLoading
+                ? 'Please wait…'
+                : authMode === 'signup'
+                  ? 'Create account and process'
+                  : 'Sign in and process'}
+            </button>
+          </div>
+          {authError && <p className="chat-widget__auth-error">{authError}</p>}
+        </form>
+      )}
+
+      {(isProcessingIntake || processedCaseId || processingError) && (
+        <section className="chat-widget__case-status" aria-live="polite">
+          {isProcessingIntake && (
+            <div className="processing-card">
+              <div className="processing-card__spinner" aria-hidden="true" />
+              <div>
+                <p className="processing-card__eyebrow">Preparing your case</p>
+                <h3>Turning your conversation into a dashboard case</h3>
+                <p>We’re organizing the incident, location, parties, damages, contact details, and documents.</p>
+              </div>
+              <div className="processing-card__steps">
+                <span className="is-complete">Conversation saved</span>
+                <span className="is-active">Structuring details</span>
+                <span>Creating dashboard case</span>
+              </div>
+            </div>
+          )}
+
+          {!isProcessingIntake && processedCaseId && processedIntake && (
+            <div className="case-ready-card">
+              <div className="case-ready-card__top">
+                <div>
+                  <p className="processing-card__eyebrow">Case ready</p>
+                  <h3>{processedIntake.city || 'Submitted incident'}{processedIntake.stateCode ? `, ${processedIntake.stateCode}` : ''}</h3>
+                </div>
+                <span className="case-ready-card__status">Pending review</span>
+              </div>
+              <p className="case-ready-card__description">{processedIntake.description}</p>
+              <div className="case-ready-card__facts">
+                <div>
+                  <span>Incident date</span>
+                  <strong>{processedIntake.incidentDate}</strong>
+                </div>
+                <div>
+                  <span>Documents</span>
+                  <strong>{attachedFiles.length}</strong>
+                </div>
+                <div>
+                  <span>Case ID</span>
+                  <strong>{processedCaseId.slice(0, 8)}…</strong>
+                </div>
+              </div>
+              <Link
+                className="case-ready-card__button"
+                to={`/dashboard/cases/${processedCaseId}`}
+              >
+                Open your case
+              </Link>
+            </div>
+          )}
+
+          {!isProcessingIntake && processingError && (
+            <div className="processing-error-card">
+              <h3>Your conversation is safe</h3>
+              <p>We could not finish creating the dashboard case. You can retry without repeating the intake.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (user && sessionId) {
+                    void processCompletedIntake(intakeDraft, sessionId, user)
+                  }
+                }}
+              >
+                Retry processing
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
+      <form className="chat-widget__composer" onSubmit={handleSubmit}>
+        {intakeStep === 'documents' && (
+          <div className="chat-widget__document-step">
+            <div className="health-information-notice">
+              <div>
+                <strong>Health information notice</strong>
+                <p>{healthInformationNotice}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => speechOutput.speak(healthInformationNotice)}
+              >
+                Hear notice
+              </button>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={healthNoticeAccepted}
+                  onChange={(event) => setHealthNoticeAccepted(event.target.checked)}
+                />
+                <span>I understand and authorize this storage and limited sharing.</span>
+              </label>
+            </div>
+            <div className="chat-widget__attachments">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.jpg,.jpeg,.png,.heic,.doc,.docx,.txt"
+                onChange={handleAttachFiles}
+                hidden
               />
               <button
-                type="submit"
-                disabled={!input.trim() || isLoading || intakeSubmitting || filesAnalyzing}
-                style={{
-                  padding: '12px 24px',
-                  backgroundColor: input.trim() && !isLoading && !intakeSubmitting && !filesAnalyzing ? minervaTheme.gold : '#d8dee9',
-                  color: input.trim() && !isLoading && !intakeSubmitting && !filesAnalyzing ? minervaTheme.navyDark : minervaTheme.muted,
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  cursor: input.trim() && !isLoading && !intakeSubmitting && !filesAnalyzing ? 'pointer' : 'not-allowed',
-                  transition: 'background-color 0.2s',
-                }}
+                type="button"
+                className="chat-widget__attach"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploadingFiles || !healthNoticeAccepted}
               >
-                Send
+                <Paperclip aria-hidden="true" />
+                {isUploadingFiles ? 'Uploading…' : 'Add file'}
               </button>
-            </form>
+              {attachedFiles.length > 0 && (
+                <span>
+                  {attachedFiles.length} file{attachedFiles.length === 1 ? '' : 's'} attached
+                </span>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-    </>
+        )}
+        <button
+          className={voiceInput.enabled ? 'chat-widget__voice is-listening' : 'chat-widget__voice'}
+          type="button"
+          onClick={toggleVoiceInput}
+          disabled={!voiceInput.supported || isLoading || isProcessingIntake}
+          aria-label={voiceInput.enabled ? 'Stop voice input' : 'Start voice input'}
+          aria-pressed={voiceInput.enabled}
+          title={voiceInput.supported ? 'Dictate your answer' : 'Voice input requires Chrome or Edge'}
+        >
+          {voiceInput.enabled ? <LucideMicOff /> : <LucideMic />}
+        </button>
+        <textarea
+          ref={textareaRef}
+          value={input}
+          onChange={(event) => {
+            useManualInput()
+            inputRef.current = event.target.value
+            setInput(event.target.value)
+          }}
+          onClick={useManualInput}
+          onFocus={useManualInput}
+          onKeyDown={handleKeyDown}
+          placeholder={voiceInput.listening ? 'Listening — pause to send…' : 'Type or dictate your answer…'}
+          disabled={isLoading || isProcessingIntake}
+          rows={1}
+        />
+        <button
+          className="chat-widget__send"
+          type="submit"
+          disabled={!isManualInput || !input.trim() || isLoading || isProcessingIntake}
+        >
+          Send
+        </button>
+      </form>
+    </section>
   )
 }
 
-function toMinervaMessage(message: Message): MinervaChatMessage {
+function toConversationalIntakeMessage(message: Message): ConversationalIntakeMessage {
   return {
     role: message.role,
     content: message.content,
   }
-}
-
-function documentKindFor(file: File): string {
-  if (file.type.startsWith('image/')) return 'photos'
-  const name = file.name.toLowerCase()
-  if (name.includes('police')) return 'police_report'
-  if (name.includes('medical') || name.includes('bill') || name.includes('er')) return 'er_bill'
-  return 'other'
 }

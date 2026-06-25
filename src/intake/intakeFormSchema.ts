@@ -330,51 +330,51 @@ export const intakeFormSchema = {
     {
       id: 'whatHappened',
       fieldIds: ['whatHappened'],
-      prompt: "Let's start the intake. In 1-3 sentences, what happened?",
+      prompt: "Tell me what happened. We're here for you, and you can share as much or as little as feels comfortable.",
       required: true,
     },
     {
       id: 'incidentDate',
       fieldIds: ['incidentDate'],
-      prompt: 'What date did this happen? A date like 2026-05-06 works best.',
+      prompt: 'About when did this happen? An exact date is helpful, but an approximate date or timeframe is okay.',
       required: true,
     },
     {
       id: 'location',
       fieldIds: ['city', 'state'],
-      prompt: 'What city and state did it happen in?',
+      prompt: 'Where did this happen? You can share a city and state, an address, or whatever location details you know.',
       required: true,
     },
     {
       id: 'adverseParty',
       fieldIds: ['adverseParty'],
-      prompt: "Who else was involved? Share the adverse party's name or say unknown.",
+      prompt: 'Who else was involved? Share any people, businesses, agencies, or organizations you remember. It is okay to say you do not know.',
       required: true,
     },
     {
       id: 'insurerInfo',
       fieldIds: ['insurerName', 'policyNumber', 'claimNumber'],
-      prompt: 'Do you have any insurance info, policy number, or claim number? If not, say none.',
+      prompt: 'Do you have any insurance, policy, or claim information? Share whatever you have, or say you do not have it yet.',
       required: true,
     },
     {
       id: 'documents',
       fieldIds: ['authorizeDocuments', 'policeReportFile', 'incidentPhotosFile', 'medicalSummaryFile'],
       prompt:
-        'Do you authorize True Legal Innovations to receive, organize, and share the information you submit with participating licensed attorneys solely for attorney matching? TLI is not your legal representative and will not contact third parties or obtain records on your behalf. Reply yes to authorize.',
+        'Do you have documents or photos related to this matter? Tell me what you have. Also say whether you authorize True Legal Innovations to organize and share what you submit with participating attorneys for matching.',
       required: true,
     },
     {
       id: 'damages',
       fieldIds: ['medicalBills', 'daysMissed', 'hourlyRate'],
       prompt:
-        'What are the damages so far? Medical bills are optional. Please include days missed from work and your approximate hourly rate if known. Use 0 for anything that does not apply.',
+        'How has this affected you so far? Include injuries, treatment, expenses, property damage, missed work, lost income, or other impacts. Estimates are fine.',
       required: true,
     },
     {
       id: 'contact',
       fieldIds: ['fullName', 'preferredContact', 'email', 'phone'],
-      prompt: 'What is your full name, preferred contact method, email, and phone number if you want calls or texts?',
+      prompt: 'What is your name, and how should we contact you? Share an email, phone number, and whether you prefer email, call, or text.',
       required: true,
     },
     {

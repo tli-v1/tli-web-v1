@@ -1,226 +1,112 @@
-import { intakeFormSchema } from "../intake/intakeFormSchema";
-
-export interface ChatIntakeDraft {
-  whatHappened: string;
-  incidentDate: string;
-  city: string;
-  state: string;
-  adverseParty: string;
-  insurerName: string;
-  policyNumber: string;
-  claimNumber: string;
-  authorizeDocuments: boolean | null;
-  medicalBills: string;
-  daysMissed: string;
-  hourlyRate: string;
-  fullName: string;
-  preferredContact: string;
-  email: string;
-  phone: string;
-  consentProcess: boolean;
-  consentContact: boolean;
-}
+import { intakeFormSchema } from '../intake/intakeFormSchema'
 
 export type ChatIntakeStep =
-  | "whatHappened"
-  | "incidentDate"
-  | "location"
-  | "adverseParty"
-  | "insurerInfo"
-  | "documents"
-  | "damages"
-  | "contact"
-  | "consent";
+  | 'whatHappened'
+  | 'incidentDate'
+  | 'location'
+  | 'adverseParty'
+  | 'insurerInfo'
+  | 'documents'
+  | 'damages'
+  | 'contact'
+  | 'consent'
+
+export interface ChatIntakeDraft {
+  answers: Partial<Record<ChatIntakeStep, string>>
+}
 
 export interface IntakeUpdateResult {
-  accepted: boolean;
-  draft: ChatIntakeDraft;
-  message?: string;
+  accepted: boolean
+  draft: ChatIntakeDraft
+  message?: string
 }
 
 export interface IntakeAnswerContext {
-  attachedFileCount?: number;
-  userEmail?: string;
+  attachedFileCount?: number
+  userEmail?: string
+}
+
+const chatSteps = intakeFormSchema.chatSteps.map((step) => ({
+  id: step.id as ChatIntakeStep,
+  prompt: step.prompt,
+}))
+
+const stepOrder = chatSteps.map((step) => step.id)
+const questions = Object.fromEntries(
+  chatSteps.map((step) => [step.id, step.prompt]),
+) as Record<ChatIntakeStep, string>
+
+const stepLabels: Record<ChatIntakeStep, string> = {
+  whatHappened: 'What happened',
+  incidentDate: 'When it happened',
+  location: 'Where it happened',
+  adverseParty: 'Other people or organizations involved',
+  insurerInfo: 'Insurance or claim information',
+  documents: 'Documents and sharing authorization',
+  damages: 'Injuries, expenses, and missed work',
+  contact: 'Contact information',
+  consent: 'Storage and contact consent',
 }
 
 export const emptyChatIntakeDraft: ChatIntakeDraft = {
-  whatHappened: "",
-  incidentDate: "",
-  city: "",
-  state: "",
-  adverseParty: "",
-  insurerName: "",
-  policyNumber: "",
-  claimNumber: "",
-  authorizeDocuments: null,
-  medicalBills: "",
-  daysMissed: "",
-  hourlyRate: "",
-  fullName: "",
-  preferredContact: "email",
-  email: "",
-  phone: "",
-  consentProcess: false,
-  consentContact: false,
-};
-
-const roundToCents = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-
-const localIsoDate = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const currencyString = (value: string) => {
-  const amount = Number(value);
-  return Number.isFinite(amount) ? roundToCents(amount).toFixed(2) : value;
-};
-
-const stepOrder = intakeFormSchema.chatSteps.map((step) => step.id) as ChatIntakeStep[];
-
-const questions = Object.fromEntries(
-  intakeFormSchema.chatSteps.map((step) => [step.id, step.prompt])
-) as Record<ChatIntakeStep, string>;
+  answers: {},
+}
 
 export function isIntakeRequest(text: string): boolean {
-  const normalized = normalize(text);
-  return /\b(start|begin|submit|file|create)\b.*\b(intake|case|claim)\b/.test(normalized)
-    || /\b(i have|i was|my case|my claim)\b/.test(normalized);
+  const normalized = text.toLowerCase().replace(/\s+/g, ' ').trim()
+  return /\b(start|begin|submit|file|create|share|tell)\b.*\b(intake|case|claim|happened)\b/.test(normalized)
+    || /\b(i have|i was|my case|my claim|i need a lawyer)\b/.test(normalized)
 }
 
 export function getInitialIntakeQuestion(): string {
-  return questions.whatHappened;
+  return questions.whatHappened
 }
 
 export function getNextIntakeStep(draft: ChatIntakeDraft): ChatIntakeStep | null {
-  if (!draft.whatHappened.trim()) return "whatHappened";
-  if (!draft.incidentDate) return "incidentDate";
-  if (!draft.city.trim() || !draft.state.trim()) return "location";
-  if (!draft.adverseParty.trim()) return "adverseParty";
-  if (draft.insurerName === "") return "insurerInfo";
-  if (draft.authorizeDocuments === null) return "documents";
-  if (draft.daysMissed === "" || draft.hourlyRate === "") return "damages";
-  if (!draft.fullName.trim() || !draft.email.trim()) return "contact";
-  if (!draft.consentProcess) return "consent";
-  return null;
+  return stepOrder.find((step) => !draft.answers[step]?.trim()) ?? null
 }
 
 export function getIntakeQuestion(step: ChatIntakeStep): string {
-  return questions[step];
+  return questions[step]
+}
+
+export function getAllIntakeQuestions(): string[] {
+  return stepOrder.map((step) => questions[step])
 }
 
 export function isChatIntakeComplete(draft: ChatIntakeDraft): boolean {
-  return getNextIntakeStep(draft) === null;
+  return getNextIntakeStep(draft) === null
 }
 
 export function applyIntakeAnswer(
   draft: ChatIntakeDraft,
   step: ChatIntakeStep,
   answer: string,
-  context: IntakeAnswerContext = {}
+  context: IntakeAnswerContext = {},
 ): IntakeUpdateResult {
-  const next = { ...draft };
-  const trimmed = answer.trim();
+  const trimmed = answer.trim()
 
-  switch (step) {
-    case "whatHappened":
-      if (isUnusableAnswer(trimmed) || !isIncidentDescription(trimmed)) {
-        return retry(next, "Please describe the incident or legal issue in a little more detail, including what happened and why you may need legal help.");
-      }
-      next.whatHappened = trimmed;
-      return accept(next);
-
-    case "incidentDate": {
-      if (isUnusableAnswer(trimmed)) return retry(next, "Please enter the actual date the incident happened, like 2026-05-06.");
-      const date = parseDate(trimmed);
-      if (!date) return retry(next, "I could not read that date. Please use a date like 2026-05-06.");
-      if (isFutureDate(date)) return retry(next, "That date appears to be in the future. Please enter the date the incident already happened.");
-      next.incidentDate = date;
-      return accept(next);
+  if (!trimmed) {
+    return {
+      accepted: false,
+      draft,
+      message: 'Share whatever you know. It is okay if the information is approximate or incomplete.',
     }
+  }
 
-    case "location": {
-      if (isUnusableAnswer(trimmed)) return retry(next, "Please include the actual city and state, like Los Angeles, CA.");
-      const location = parseLocation(trimmed);
-      if (!location) return retry(next, "Please include both city and state, like Los Angeles, CA.");
-      next.city = location.city;
-      next.state = location.state;
-      return accept(next);
-    }
+  const fileNote =
+    step === 'documents' && context.attachedFileCount
+      ? `\n\nAttached files: ${context.attachedFileCount}`
+      : ''
 
-    case "adverseParty":
-      if (!isAcceptableAdverseParty(trimmed)) {
-        return retry(next, "Please share the actual other party’s name, business, insurer, or say unknown if you do not know.");
-      }
-      next.adverseParty = isUnknownAnswer(trimmed) ? "Unknown party" : trimmed;
-      return accept(next);
-
-    case "insurerInfo":
-      if (isUnusableAnswer(trimmed, { allowUnknown: true })) {
-        return retry(next, "Please share the insurer, policy number, claim number, or say none if you do not have insurance info.");
-      }
-      applyInsurerInfo(next, trimmed);
-      return accept(next);
-
-    case "documents":
-      if (!hasDocumentAnswer(trimmed)) {
-        return retry(next, "Please reply yes if you authorize TLI to receive, organize, and share your submitted information for attorney matching purposes.");
-      }
-      next.authorizeDocuments = /\b(yes|authorize|authorized|agree|consent|permission)\b/i.test(trimmed);
-      if (!next.authorizeDocuments) {
-        return retry(next, "Authorization is required to submit an intake. Please reply yes if you authorize TLI to receive, organize, and share your submitted information for attorney matching purposes.");
-      }
-      return accept(next);
-
-    case "damages": {
-      if (isUnusableAnswer(trimmed, { allowUnknown: true })) {
-        return retry(next, "Please include three numbers: medical bills, days missed, and hourly rate. Use 0 if something does not apply.");
-      }
-      const damages = parseDamages(trimmed);
-      if (!damages) {
-        return retry(next, "Please include three numbers: medical bills, days missed, and hourly rate. Use 0 if something does not apply.");
-      }
-      next.medicalBills = damages.medicalBills;
-      next.daysMissed = damages.daysMissed;
-      next.hourlyRate = damages.hourlyRate;
-      return accept(next);
-    }
-
-    case "contact": {
-      if (isUnusableAnswer(trimmed)) {
-        return retry(next, context.userEmail || next.email ? "Please provide your real full name." : "Please provide your real full name and email address.");
-      }
-      const contact = parseContact(trimmed);
-      const email = contact.email || next.email || context.userEmail || "";
-      if (contact.email) next.email = contact.email;
-      if (!email) return retry(next, "Please include a valid email address so the case can be tied to your account.");
-      if (!contact.fullName) {
-        next.email = email;
-        return retry(next, "Please include your full name.");
-      }
-      if (contact.preferredContact === "phone" && !contact.phone) {
-        next.email = email;
-        return retry(next, "Please include a phone number if calls or texts are your preferred contact method.");
-      }
-      next.fullName = contact.fullName;
-      next.email = email;
-      next.phone = contact.phone;
-      next.preferredContact = contact.preferredContact;
-      return accept(next);
-    }
-
-    case "consent":
-      if (isUnusableAnswer(trimmed)) {
-        return retry(next, "Please reply yes if you consent, or no if you do not.");
-      }
-      if (!/\b(yes|y|agree|consent|ok|okay)\b/i.test(trimmed)) {
-        return retry(next, "I need your consent before submitting. Reply yes if you consent to storage and contact.");
-      }
-      next.consentProcess = true;
-      next.consentContact = true;
-      return accept(next);
+  return {
+    accepted: true,
+    draft: {
+      answers: {
+        ...draft.answers,
+        [step]: `${trimmed}${fileNote}`,
+      },
+    },
   }
 }
 
@@ -228,309 +114,19 @@ export function applyIntakeAnswerAndAdvance(
   draft: ChatIntakeDraft,
   step: ChatIntakeStep,
   answer: string,
-  context: IntakeAnswerContext = {}
+  context: IntakeAnswerContext = {},
 ): IntakeUpdateResult {
-  let result = applyIntakeAnswer(draft, step, answer, context);
-  if (!result.accepted) return result;
-
-  let nextStep = getStepAfter(step, result.draft);
-  while (nextStep) {
-    const extracted = extractAnswerForStep(answer, nextStep, context);
-    if (!extracted) break;
-
-    const extractedResult = applyIntakeAnswer(result.draft, nextStep, extracted, context);
-    if (!extractedResult.accepted) break;
-
-    result = extractedResult;
-    nextStep = getStepAfter(nextStep, result.draft);
-  }
-
-  return result;
+  return applyIntakeAnswer(draft, step, answer, context)
 }
 
 export function buildIntakeSummary(draft: ChatIntakeDraft): string {
-  return [
-    "I have enough to prepare your intake:",
-    `Incident: ${draft.whatHappened}`,
-    `Date/location: ${draft.incidentDate} in ${draft.city}, ${draft.state}`,
-    `Other party: ${draft.adverseParty}`,
-    `Damages: $${currencyString(draft.medicalBills)} medical bills, ${draft.daysMissed} days missed, $${currencyString(draft.hourlyRate)}/hour`,
-    `Contact: ${draft.fullName}, ${draft.email}${draft.phone ? `, ${draft.phone}` : ""}`,
-  ].join("\n");
+  const lines = stepOrder
+    .filter((step) => step !== 'consent')
+    .map((step) => `${stepLabels[step]}: ${draft.answers[step] || 'Not provided'}`)
+
+  return ['Here is what I captured:', ...lines].join('\n')
 }
 
-export function getStepAfter(step: ChatIntakeStep, draft: ChatIntakeDraft): ChatIntakeStep | null {
-  const nextMissing = getNextIntakeStep(draft);
-  if (nextMissing) return nextMissing;
-  const index = stepOrder.indexOf(step);
-  return stepOrder[index + 1] ?? null;
-}
-
-function accept(draft: ChatIntakeDraft): IntakeUpdateResult {
-  return { accepted: true, draft };
-}
-
-function retry(draft: ChatIntakeDraft, message: string): IntakeUpdateResult {
-  return { accepted: false, draft, message };
-}
-
-function normalize(text: string): string {
-  return text.toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-function isIncidentDescription(text: string): boolean {
-  const normalized = normalize(text);
-  const words = normalized.split(/\s+/).filter(Boolean);
-  const hasEnoughDetail = normalized.length >= 25 && words.length >= 6;
-  const hasCaseSignal = /\b(accident|crash|collision|hit|injur|hurt|pain|fall|slip|trip|property|damage|medical|hospital|doctor|police|report|claim|insurance|insurer|lawsuit|sued|court|contract|landlord|tenant|work|fired|termination|discriminat|harass|assault|theft|fraud|negligence)\b/.test(normalized);
-  return hasEnoughDetail && hasCaseSignal;
-}
-
-function isUnusableAnswer(text: string, options: { allowUnknown?: boolean } = {}): boolean {
-  const normalized = normalize(text);
-  if (!normalized) return true;
-  if (options.allowUnknown && isUnknownAnswer(normalized)) return false;
-  if (normalized.length < 2) return true;
-  if (/^(test|testing|asdf|qwerty|nonsense|blah|blah blah|random|whatever|idk|lol|lmao|haha|ok|okay|sure)$/i.test(normalized)) return true;
-  if (/\b(your mom|ur mom|yo mom|deez|stupid|idiot|fuck|shit|bitch|asshole)\b/i.test(normalized)) return true;
-  if (/^(.)\1{3,}$/.test(normalized.replace(/\s/g, ""))) return true;
-  return false;
-}
-
-function isAcceptableAdverseParty(text: string): boolean {
-  const normalized = normalize(text);
-  if (isUnknownAnswer(normalized)) return true;
-  if (isUnusableAnswer(normalized)) return false;
-  if (!/[a-z]/i.test(normalized)) return false;
-
-  const vagueRelations = /\b(mom|mother|dad|father|brother|sister|friend|someone|somebody|person|people|guy|girl|man|woman|them|they)\b/i;
-  const hasSpecificIdentifier = /\b(inc|llc|corp|company|co|insurance|insurer|farm|geico|progressive|allstate|state farm|landlord|tenant|employer|driver|owner|store|hospital|clinic|police|officer|doctor|dr\.|[A-Z][a-z]+ [A-Z][a-z]+)\b/.test(text);
-  if (vagueRelations.test(normalized) && !hasSpecificIdentifier) return false;
-
-  const meaningfulTokens = normalized
-    .replace(/[^a-z0-9\s&.'-]/gi, " ")
-    .split(/\s+/)
-    .filter((token) => token.length >= 2);
-
-  return meaningfulTokens.length >= 1;
-}
-
-function extractAnswerForStep(
-  text: string,
-  step: ChatIntakeStep,
-  context: IntakeAnswerContext
-): string | null {
-  switch (step) {
-    case "incidentDate":
-      return extractDateText(text);
-    case "location":
-      return extractLocationText(text);
-    case "adverseParty":
-      return extractAdversePartyText(text);
-    case "insurerInfo":
-      return extractInsurerText(text);
-    case "documents":
-      return context.attachedFileCount && context.attachedFileCount > 0 ? "attached files" : extractDocumentText(text);
-    case "damages":
-      return extractDamagesText(text);
-    case "contact":
-      return extractContactText(text);
-    case "consent":
-      return extractConsentText(text);
-    case "whatHappened":
-      return null;
-  }
-}
-
-function extractDateText(text: string): string | null {
-  const candidates = [
-    ...text.matchAll(/\b\d{4}-\d{1,2}-\d{1,2}\b/g),
-    ...text.matchAll(/\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/g),
-    ...text.matchAll(/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s*\d{4})?\b/gi),
-  ].map((match) => match[0]);
-
-  const withYear = candidates.filter((candidate) => /\b\d{4}\b/.test(candidate));
-  return withYear.at(-1) ?? candidates.at(-1) ?? null;
-}
-
-function extractLocationText(text: string): string | null {
-  const match = text.match(/\b([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,3}),?\s+([A-Z]{2})\b/);
-  return match ? `${match[1]}, ${match[2]}` : null;
-}
-
-function extractAdversePartyText(text: string): string | null {
-  const byMatch = text.match(/\b(?:hit by|struck by|rear-ended by|sued by|fired by|hurt by|injured by|against|with)\s+([A-Z][a-zA-Z0-9&.'-]+(?:\s+[A-Z][a-zA-Z0-9&.'-]+){0,4})\b/);
-  return byMatch?.[1] ?? null;
-}
-
-function extractInsurerText(text: string): string | null {
-  if (!/\b(insurance|insurer|policy|claim)\b/i.test(text)) return null;
-  return text;
-}
-
-function extractDocumentText(text: string): string | null {
-  return hasDocumentAnswer(text) ? text : null;
-}
-
-function extractDamagesText(text: string): string | null {
-  return parseDamages(text) ? text : null;
-}
-
-function extractContactText(text: string): string | null {
-  const hasEmail = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(text);
-  const hasNameSignal = /\b(my name is|i am|i'm)\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+/i.test(text);
-  return hasEmail && hasNameSignal ? text : null;
-}
-
-function extractConsentText(text: string): string | null {
-  return /\b(i consent|i agree|yes,?\s*i consent|yes,?\s*i agree)\b/i.test(text) ? "yes" : null;
-}
-
-function parseDate(text: string): string | null {
-  const dateText = extractDateText(text) ?? text;
-  const cleaned = removeDateOrdinals(dateText);
-
-  const isoMatch = cleaned.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
-  if (isoMatch) {
-    const [, year, month, day] = isoMatch;
-    return validIsoDate(year, month, day);
-  }
-
-  const shortMatch = cleaned.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/);
-  if (shortMatch) {
-    const [, month, day, providedYear] = shortMatch;
-    const year = providedYear
-      ? providedYear.length === 2 ? `20${providedYear}` : providedYear
-      : String(new Date().getFullYear());
-    return validIsoDate(year, month, day);
-  }
-
-  const monthMatch = cleaned.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:,?\s*(\d{4}))?\b/i);
-  if (monthMatch) {
-    const [, monthName, day, providedYear] = monthMatch;
-    const year = providedYear || String(new Date().getFullYear());
-    return validIsoDate(year, String(monthNumber(monthName)), day);
-  }
-
-  const parsed = new Date(cleaned);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return localIsoDate(parsed);
-}
-
-function removeDateOrdinals(text: string): string {
-  return text.replace(/\b(\d{1,2})(st|nd|rd|th)\b/gi, "$1");
-}
-
-function monthNumber(monthName: string): number {
-  const normalized = monthName.toLowerCase().slice(0, 3);
-  return ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"].indexOf(normalized) + 1;
-}
-
-function validIsoDate(year: string, month: string, day: string): string | null {
-  const parsedYear = Number(year);
-  const parsedMonth = Number(month);
-  const parsedDay = Number(day);
-  if (!Number.isInteger(parsedYear) || !Number.isInteger(parsedMonth) || !Number.isInteger(parsedDay)) return null;
-
-  const normalized = `${String(parsedYear).padStart(4, "0")}-${String(parsedMonth).padStart(2, "0")}-${String(parsedDay).padStart(2, "0")}`;
-  const parsed = new Date(parsedYear, parsedMonth - 1, parsedDay);
-  if (Number.isNaN(parsed.getTime())) return null;
-  if (
-    parsed.getFullYear() !== parsedYear ||
-    parsed.getMonth() !== parsedMonth - 1 ||
-    parsed.getDate() !== parsedDay
-  ) {
-    return null;
-  }
-  return normalized;
-}
-
-function isFutureDate(date: string): boolean {
-  return date > localIsoDate(new Date());
-}
-
-function parseLocation(text: string): { city: string; state: string } | null {
-  const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
-  if (parts.length >= 2) {
-    return normalizedLocation(parts[parts.length - 2], parts[parts.length - 1]);
-  }
-
-  const tokens = text.trim().split(/\s+/);
-  if (tokens.length < 2) return null;
-  const state = tokens[tokens.length - 1].toUpperCase().slice(0, 2);
-  const city = tokens.slice(0, -1).join(" ");
-  return normalizedLocation(city, state);
-}
-
-function normalizedLocation(city: string, state: string): { city: string; state: string } | null {
-  const cleanCity = city.replace(/[^a-z\s.'-]/gi, "").replace(/\s+/g, " ").trim();
-  const cleanState = state.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
-  if (cleanCity.length < 2 || cleanState.length !== 2) return null;
-  return { city: cleanCity, state: cleanState };
-}
-
-function isUnknownAnswer(text: string): boolean {
-  return !text.trim() || /\b(unknown|not sure|unsure|don't know|do not know|n\/a)\b/i.test(text);
-}
-
-function hasDocumentAnswer(text: string): boolean {
-  return /\b(yes|authorize|authorized|agree|consent|permission|no|none|not yet|don't|do not)\b/i.test(text);
-}
-
-function applyInsurerInfo(draft: ChatIntakeDraft, text: string) {
-  if (!text || /\b(no|none|unknown|not sure|unsure|n\/a)\b/i.test(text)) {
-    draft.insurerName = "None";
-    return;
-  }
-
-  draft.insurerName = text;
-  draft.policyNumber = text.match(/policy(?: number| #|:)?\s*([a-z0-9-]+)/i)?.[1] ?? "";
-  draft.claimNumber = text.match(/claim(?: number| #|:)?\s*([a-z0-9-]+)/i)?.[1] ?? "";
-}
-
-function parseDamages(text: string): { medicalBills: string; daysMissed: string; hourlyRate: string } | null {
-  if (/\b(no|none|not applicable|n\/a|did not miss work|didn't miss work|no missed work)\b/i.test(text)) {
-    return {
-      medicalBills: "0.00",
-      daysMissed: "0",
-      hourlyRate: "0.00",
-    };
-  }
-
-  const numbers = text.match(/\d+(?:,\d{3})*(?:\.\d+)?/g)?.map((value) => value.replace(/,/g, "")) ?? [];
-  if (numbers.length < 2) return null;
-  if (numbers.slice(0, 3).some((value) => !Number.isFinite(Number(value)) || Number(value) < 0)) return null;
-  if (numbers.length === 2) {
-    return {
-      medicalBills: "0.00",
-      daysMissed: numbers[0],
-      hourlyRate: currencyString(numbers[1]),
-    };
-  }
-  return {
-    medicalBills: currencyString(numbers[0]),
-    daysMissed: numbers[1],
-    hourlyRate: currencyString(numbers[2]),
-  };
-}
-
-function parseContact(text: string): {
-  fullName: string;
-  email: string;
-  phone: string;
-  preferredContact: string;
-} {
-  const email = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] ?? "";
-  const phone = text.match(/(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}/)?.[0] ?? "";
-  const preferredContact = /\b(call|phone|text|sms)\b/i.test(text) ? "phone" : "email";
-  const fullName = text
-    .replace(email, "")
-    .replace(phone, "")
-    .replace(/\b(email|phone|text|call|preferred|method|contact|me|at|by)\b/gi, "")
-    .split(",")[0]
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const nameParts = fullName.split(/\s+/).filter(Boolean);
-  return { fullName: nameParts.length >= 2 ? fullName : "", email, phone, preferredContact };
+export function getStepLabel(step: ChatIntakeStep): string {
+  return stepLabels[step]
 }

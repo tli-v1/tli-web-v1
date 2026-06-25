@@ -1,30 +1,43 @@
-import { getAI, getGenerativeModel, VertexAIBackend } from "firebase/ai";
-import {
-  addDoc,
-  collection,
-  doc,
-  serverTimestamp,
-  setDoc,
-  writeBatch,
-  type DocumentReference,
-} from "firebase/firestore";
-import { app, db } from "../config/firebase";
+import { getAI, getGenerativeModel, VertexAIBackend } from 'firebase/ai'
+import { httpsCallable } from 'firebase/functions'
+import { app, functions } from '../config/firebase'
 
-export type MinervaMessageRole = "user" | "assistant";
+export type ConversationalIntakeMessageRole = 'user' | 'assistant'
 
-export interface MinervaChatMessage {
-  role: MinervaMessageRole;
-  content: string;
+export interface ConversationalIntakeMessage {
+  role: ConversationalIntakeMessageRole
+  content: string
 }
 
-export interface SaveMinervaExchangeInput {
-  sessionId: string | null;
-  userId?: string;
-  userMessage: MinervaChatMessage;
-  assistantMessage: MinervaChatMessage;
+export interface SaveConversationalIntakeExchangeInput {
+  sessionId: string | null
+  userId?: string
+  userMessage: ConversationalIntakeMessage
+  assistantMessage: ConversationalIntakeMessage
+  intake?: {
+    step: string
+    answer: string
+    complete: boolean
+  }
 }
 
-const ai = getAI(app, { backend: new VertexAIBackend("us-central1") });
+export interface ConversationalIntakeFile {
+  name: string
+  contentType: string
+  size: number
+  storagePath: string
+}
+
+interface PersistenceResponse {
+  sessionId: string
+}
+
+const persistIntake = httpsCallable<Record<string, unknown>, PersistenceResponse>(
+  functions,
+  'persistConversationalIntake',
+)
+
+const ai = getAI(app, { backend: new VertexAIBackend('us-central1') })
 
 export const minervaSystemInstruction = `You are Minerva, True Legal's legal assistant for the website chat widget.
 
@@ -36,62 +49,65 @@ Rules:
 - Do not provide definitive legal advice, predictions, or guarantees.
 - Ask one focused follow-up question when more context is needed.
 - For urgent deadlines, safety risks, criminal exposure, or active court matters, recommend speaking with a licensed attorney promptly.
-- Keep the conversation in normal chat prose. Do not output intake JSON or structured extraction blocks.`;
+- Keep the conversation in normal chat prose. Do not output intake JSON or structured extraction blocks.`
 
 export const minervaModel = getGenerativeModel(ai, {
-  model: "gemini-2.5-flash-lite",
+  model: 'gemini-2.5-flash-lite',
   systemInstruction: minervaSystemInstruction,
   generationConfig: {
     maxOutputTokens: 1024,
     temperature: 0.4,
     topP: 0.9,
   },
-});
+})
 
-export async function saveMinervaExchange({
-  sessionId,
-  userId,
-  userMessage,
-  assistantMessage,
-}: SaveMinervaExchangeInput): Promise<string> {
-  const sessionRef = await getOrCreateSession(sessionId, userId);
-  const batch = writeBatch(db);
-  const messagesRef = collection(sessionRef, "messages");
-
-  batch.set(doc(messagesRef), {
-    ...userMessage,
-    createdAt: serverTimestamp(),
-  });
-
-  batch.set(doc(messagesRef), {
-    ...assistantMessage,
-    createdAt: serverTimestamp(),
-  });
-
-  batch.update(sessionRef, {
-    lastMessage: assistantMessage.content,
-    updatedAt: serverTimestamp(),
-  });
-
-  await batch.commit();
-  return sessionRef.id;
+export async function saveConversationalIntakeExchange(
+  input: SaveConversationalIntakeExchangeInput,
+): Promise<string> {
+  const response = await persistIntake({
+    action: 'exchange',
+    sessionId: input.sessionId,
+    userMessage: input.userMessage,
+    assistantMessage: input.assistantMessage,
+    intake: input.intake,
+  })
+  return response.data.sessionId
 }
 
-async function getOrCreateSession(
+export async function ensureConversationalIntakeSession(
   sessionId: string | null,
-  userId?: string
-): Promise<DocumentReference> {
-  if (sessionId) {
-    return doc(db, "minervaChats", sessionId);
-  }
+  _userId?: string,
+): Promise<string> {
+  const response = await persistIntake({
+    action: 'ensure',
+    sessionId,
+  })
+  return response.data.sessionId
+}
 
-  const sessionRef = await addDoc(collection(db, "minervaChats"), {
-    agent: "minerva",
-    userId: userId ?? null,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+export async function addConversationalIntakeFile(
+  sessionId: string,
+  file: ConversationalIntakeFile,
+): Promise<void> {
+  await persistIntake({
+    action: 'file',
+    sessionId,
+    file,
+  })
+}
 
-  await setDoc(sessionRef, { id: sessionRef.id }, { merge: true });
-  return sessionRef;
+export async function updateConversationalIntakeProcessing(
+  sessionId: string,
+  input: {
+    status: 'processing' | 'processed' | 'failed'
+    structuredData?: unknown
+    caseId?: string
+    error?: string
+  },
+): Promise<void> {
+  await persistIntake({
+    action: 'processing',
+    sessionId,
+    ...input,
+  })
 }

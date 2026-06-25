@@ -1,12 +1,225 @@
-import { onRequest } from 'firebase-functions/v2/https';
+import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 import { VertexAI } from '@google-cloud/vertexai';
+import textToSpeech from '@google-cloud/text-to-speech';
 
 admin.initializeApp();
 
 const projectId = 'peak-bit-486121-n6';
 const location = 'us-central1';
 const model = 'gemini-2.5-flash-lite';
+const speechClient = new textToSpeech.TextToSpeechClient({
+  apiEndpoint: 'us-texttospeech.googleapis.com',
+});
+const conversationalVoicePrompt = `Speak as a warm, attentive male legal-intake guide in a natural conversation.
+Use a neutral North American accent with a deep, grounded register, gentle concern, and calm confidence.
+Sound human and present, never like an announcer, phone tree, or formal narrator.
+Use a soothing tone, natural rhythm, short pauses, and soft emphasis. Keep the delivery conversational and direct rather than slow or meditative.
+Keep questions inviting and concise.
+Do not sound distressed, overly cheerful, theatrical, patronizing, or flirtatious.
+When discussing injuries or difficult events, convey quiet empathy without exaggerating emotion.`;
+const conversationalIntakes = admin.firestore().collection('conversationalIntakes');
+
+interface IntakeMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+function validIntakeMessage(value: unknown): value is IntakeMessage {
+  if (!value || typeof value !== 'object') return false;
+  const message = value as Record<string, unknown>;
+  return (message.role === 'user' || message.role === 'assistant')
+    && typeof message.content === 'string'
+    && message.content.trim().length > 0
+    && message.content.length <= 10000;
+}
+
+export const persistConversationalIntake = onCall(
+  {
+    region: 'us-central1',
+    maxInstances: 20,
+    memory: '256MiB',
+    timeoutSeconds: 30,
+  },
+  async (request) => {
+    const action = request.data?.action;
+    const providedSessionId = typeof request.data?.sessionId === 'string'
+      ? request.data.sessionId.trim()
+      : '';
+    const sessionRef = providedSessionId
+      ? conversationalIntakes.doc(providedSessionId)
+      : conversationalIntakes.doc();
+    const userId = request.auth?.uid ?? null;
+
+    if (action === 'ensure') {
+      await sessionRef.set({
+        id: sessionRef.id,
+        recordType: 'conversational_intake',
+        displayName: 'Conversational Intake',
+        agent: 'conversational-intake',
+        intakeStatus: 'in_progress',
+        rawAnswers: {},
+        userId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+      return {sessionId: sessionRef.id};
+    }
+
+    if (action === 'exchange') {
+      const userMessage = request.data?.userMessage;
+      const assistantMessage = request.data?.assistantMessage;
+      if (!validIntakeMessage(userMessage) || !validIntakeMessage(assistantMessage)) {
+        throw new HttpsError('invalid-argument', 'Valid user and assistant messages are required.');
+      }
+
+      const intake = request.data?.intake;
+      const batch = admin.firestore().batch();
+      batch.set(sessionRef, {
+        id: sessionRef.id,
+        recordType: 'conversational_intake',
+        displayName: 'Conversational Intake',
+        agent: 'conversational-intake',
+        intakeStatus: intake?.complete === true ? 'complete' : 'in_progress',
+        userId,
+        lastMessage: assistantMessage.content,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...(intake?.complete === true
+          ? {completedAt: admin.firestore.FieldValue.serverTimestamp()}
+          : {}),
+      }, {merge: true});
+      batch.set(sessionRef.collection('messages').doc(), {
+        ...userMessage,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      batch.set(sessionRef.collection('messages').doc(), {
+        ...assistantMessage,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      if (
+        intake
+        && typeof intake.step === 'string'
+        && typeof intake.answer === 'string'
+        && intake.step.length <= 100
+        && intake.answer.length <= 10000
+      ) {
+        batch.set(sessionRef, {
+          rawAnswers: {
+            [intake.step]: intake.answer,
+          },
+        }, {merge: true});
+      }
+
+      await batch.commit();
+      return {sessionId: sessionRef.id};
+    }
+
+    if (action === 'file') {
+      const file = request.data?.file;
+      if (
+        !file
+        || typeof file.name !== 'string'
+        || typeof file.contentType !== 'string'
+        || typeof file.size !== 'number'
+        || typeof file.storagePath !== 'string'
+      ) {
+        throw new HttpsError('invalid-argument', 'Valid file metadata is required.');
+      }
+
+      if (!userId || !file.storagePath.startsWith(`conversational-intakes/${userId}/`)) {
+        throw new HttpsError('permission-denied', 'File ownership could not be verified.');
+      }
+
+      await sessionRef.set({
+        files: admin.firestore.FieldValue.arrayUnion({
+          name: file.name.slice(0, 500),
+          contentType: file.contentType.slice(0, 200),
+          size: file.size,
+          storagePath: file.storagePath.slice(0, 2000),
+          uploadedAt: new Date().toISOString(),
+        }),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+      return {sessionId: sessionRef.id};
+    }
+
+    if (action === 'processing') {
+      const status = request.data?.status;
+      if (!['processing', 'processed', 'failed'].includes(status)) {
+        throw new HttpsError('invalid-argument', 'Valid processing status is required.');
+      }
+
+      await sessionRef.set({
+        processingStatus: status,
+        structuredData: request.data?.structuredData ?? null,
+        caseId: typeof request.data?.caseId === 'string' ? request.data.caseId : null,
+        processingError:
+          typeof request.data?.error === 'string' ? request.data.error.slice(0, 2000) : null,
+        processedAt:
+          status === 'processed' ? admin.firestore.FieldValue.serverTimestamp() : null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+      return {sessionId: sessionRef.id};
+    }
+
+    throw new HttpsError('invalid-argument', 'Unsupported persistence action.');
+  },
+);
+
+export const synthesizeConversationalSpeech = onCall(
+  {
+    region: 'us-central1',
+    maxInstances: 5,
+    memory: '256MiB',
+    timeoutSeconds: 30,
+  },
+  async (request) => {
+    const text = typeof request.data?.text === 'string'
+      ? request.data.text.replace(/\s+/g, ' ').trim()
+      : '';
+
+    if (!text) {
+      throw new HttpsError('invalid-argument', 'Text is required.');
+    }
+
+    if (text.length > 1200) {
+      throw new HttpsError('invalid-argument', 'Text must be 1,200 characters or fewer.');
+    }
+
+    try {
+      const [response] = await speechClient.synthesizeSpeech({
+        input: {
+          text,
+          prompt: conversationalVoicePrompt,
+        },
+        voice: {
+          languageCode: 'en-US',
+          name: 'Achernar',
+          modelName: 'gemini-2.5-flash-tts',
+        },
+        audioConfig: {
+          audioEncoding: 'MP3',
+        },
+      });
+
+      if (!response.audioContent) {
+        throw new Error('Cloud Text-to-Speech returned no audio.');
+      }
+
+      return {
+        audioContent: Buffer.from(response.audioContent).toString('base64'),
+        contentType: 'audio/mpeg',
+        voice: 'Achernar',
+        model: 'gemini-2.5-flash-tts',
+      };
+    } catch (error) {
+      console.error('Cloud Text-to-Speech synthesis failed', error);
+      throw new HttpsError('internal', 'Unable to synthesize speech.');
+    }
+  },
+);
 
 interface ChatMessage {
   role: 'user' | 'assistant';

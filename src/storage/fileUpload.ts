@@ -63,6 +63,42 @@ export async function uploadFile({
   }
 }
 
+export async function uploadConversationalIntakeFile({
+  file,
+  userId,
+  intakeId,
+}: {
+  file: File;
+  userId: string;
+  intakeId: string;
+}): Promise<FileUploadResponse> {
+  try {
+    if (!userId || !intakeId) {
+      throw new Error('Sign in before attaching files to this intake.');
+    }
+
+    const fileName = `${generateFileUuid()}${extensionFor(file.name)}`;
+    const relativePath = `${cleanSegment(userId)}/${cleanSegment(intakeId)}/${fileName}`;
+    const fullPath = storagePath('conversational-intakes', relativePath);
+    const fileRef = ref(storage, fullPath);
+
+    await uploadBytes(fileRef, file, {
+      contentType: file.type || undefined,
+      customMetadata: {
+        originalName: file.name,
+        userId,
+        intakeId,
+        recordType: 'conversational_intake',
+      },
+    });
+
+    return { path: relativePath, error: null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to upload file';
+    return { path: null, error: message };
+  }
+}
+
 export async function removeFiles(
   bucketOrPaths: string | string[],
   maybePaths?: string[]
