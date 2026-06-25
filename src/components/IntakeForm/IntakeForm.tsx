@@ -1,45 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
-import { getSession, onAuthStateChange, signUp, signInWithPassword, signOut, resetPasswordForEmail } from '../api/auth'
-import { getStateCodes, type StateCode } from '../api/stateCodes'
-import { ensureUserProfile } from '../api/userProfile'
-import { createCase, deleteCase, createIncident, createDamages, createCaseContact, createParties, createDocument } from '../api/intake'
-import { uploadFile, removeFiles } from '../storage/fileUpload'
-import type { User } from '../types'
+import { getSession, onAuthStateChange, signUp, signInWithPassword, signOut, resetPasswordForEmail } from '../../api/auth'
+import { getStateCodes, type StateCode } from '../../api/stateCodes'
+import { ensureUserProfile } from '../../api/userProfile'
+import { createCase, deleteCase, createIncident, createDamages, createCaseContact, createParties, createDocument } from '../../api/intake'
+import { uploadFile, removeFiles } from '../../storage/fileUpload'
+import { intakeFormSchema } from '../../intake/intakeFormSchema'
+import type { User } from '../../types'
+import './IntakeForm.css'
 
-const steps = [
-  {
-    name: 'Incident basics',
-    title: 'Tell us what happened',
-    description:
-      'Capture the essential facts so we understand the event and when it occurred.',
-  },
-  {
-    name: 'Parties',
-    title: 'Insurance Information (Optional)',
-    description:
-      'Share any insurance information you have',
-  },
-  {
-    name: 'Documents',
-    title: 'Supporting documents',
-    description:
-      'Upload what you have, or authorize us to retrieve reports on your behalf.',
-  },
-  {
-    name: 'Damages',
-    title: 'Damages to date',
-    description:
-      'Rough numbers help us scope exposure and prioritize next steps.',
-  },
-  {
-    name: 'Contact & consent',
-    title: 'How should we reach you?',
-    description:
-      'Provide your preferred contact details and confirm we can store your information.',
-  },
-]
+const steps = intakeFormSchema.sections
 
 interface FormData {
   whatHappened: string;
@@ -111,6 +82,15 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 2,
   })}`
 
+const dateInputValue = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const todayInputValue = () => dateInputValue(new Date())
+
 function FieldHelp({ text }: { text: string }) {
   return (
     <span className="field-help">
@@ -153,6 +133,7 @@ function IntakeForm() {
 
   const totalSteps = steps.length
   const progress = ((currentStep + 1) / totalSteps) * 100
+  const maxIncidentDate = todayInputValue()
   const visibleStateCodes = stateCodes.filter((item) => {
     const query = formData.state.trim().toLowerCase()
     if (!query) return true
@@ -294,6 +275,18 @@ function IntakeForm() {
     setSubmitError('')
   }
 
+  const handleIncidentDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const { value } = event.target
+    if (value && value > todayInputValue()) return
+
+    setFormData((prev) => ({
+      ...prev,
+      incidentDate: value,
+    }))
+    setSubmitted(false)
+    setSubmitError('')
+  }
+
   const handleIncidentDateKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Backspace' && event.key !== 'Delete') return
     if (!formData.incidentDate) return
@@ -411,18 +404,14 @@ function IntakeForm() {
         return (
           formData.whatHappened.trim() &&
           formData.incidentDate &&
+          formData.incidentDate <= maxIncidentDate &&
           formData.city.trim() &&
           formData.state.trim()
         )
       case 1:
         return true
       case 2:
-        return (
-          formData.policeReportFile ||
-          formData.incidentPhotosFile ||
-          formData.medicalSummaryFile ||
-          formData.authorizeDocuments
-        )
+        return formData.authorizeDocuments
       case 3:
         return true
       case 4:
@@ -600,8 +589,9 @@ function IntakeForm() {
           type="date"
           name="incidentDate"
           value={formData.incidentDate}
-          onChange={handleChange}
+          onChange={handleIncidentDateChange}
           onKeyDown={handleIncidentDateKeyDown}
+          max={maxIncidentDate}
           required
         />
       </label>
@@ -789,18 +779,31 @@ function IntakeForm() {
           name="authorizeDocuments"
           checked={formData.authorizeDocuments}
           onChange={handleChange}
+          required
         />
         <span>
-          I authorize the legal team to retrieve reports directly if needed.
+          I authorize TLI to receive, organize, and share the information I submit for attorney matching purposes.
         </span>
       </label>
+      <details className="field-note">
+        <summary>Authorization to Receive and Share Case Information</summary>
+        <p>
+          By checking this box, I authorize True Legal Innovations, LLC ("TLI") to receive,
+          organize, and share with participating licensed attorneys the information I voluntarily
+          submit through this platform, solely for the purpose of facilitating an attorney match.
+          I understand that TLI is not acting as my legal representative, that this authorization
+          does not create an attorney-client relationship with TLI, and that TLI will not contact
+          third parties or obtain records on my behalf. This authorization may be revoked at any
+          time by contacting TLI directly.
+        </p>
+      </details>
     </>
   )
 
   const renderDamages = () => (
     <>
       <label className="field">
-        <span>Medical bills to date (USD, optional)</span>
+        <span>Medical bills to date in USD (optional)</span>
         <input
           type="number"
           name="medicalBills"

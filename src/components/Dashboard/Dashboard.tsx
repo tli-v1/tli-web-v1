@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getUserCases } from '../api/cases'
-import { getSession, onAuthStateChange, signUp, signInWithPassword, signOut, resetPasswordForEmail } from '../api/auth'
-import { getUserProfile } from '../api/userProfile'
-import type { User, CaseSummary } from '../types'
+import { getUserCases } from '../../api/cases'
+import { getSession, onAuthStateChange, signUp, signInWithPassword, signOut, resetPasswordForEmail } from '../../api/auth'
+import { getUserProfile } from '../../api/userProfile'
+import type { User, CaseSummary } from '../../types'
+import './Dashboard.css'
 
 function Dashboard() {
   const [sessionUser, setSessionUser] = useState<User | null>(null)

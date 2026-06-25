@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
-import { getSession, onAuthStateChange } from '../api/auth'
-import { getCaseDetails } from '../api/cases'
-import { createDocument } from '../api/intake'
-import { uploadFile, createSignedUrl } from '../storage/fileUpload'
-import { normalizeStoragePath } from '../storage/paths'
+import { getSession, onAuthStateChange } from '../../api/auth'
+import { getCaseDetails } from '../../api/cases'
+import { createDocument } from '../../api/intake'
+import { uploadFile, createSignedUrl } from '../../storage/fileUpload'
+import { normalizeStoragePath } from '../../storage/paths'
+import './CaseDetails.css'
 
 const formatDate = (iso, fallback = '—') => {
   if (!iso) return fallback
@@ -202,7 +203,7 @@ function CaseDetails() {
             </Link>
             <h1>Marketplace readiness</h1>
             <p className="helper-text">
-              Complete the required items so our legal team can review and publish this case.
+              Complete the required items so True Legal Innovations can review and publish this case.
             </p>
           </div>
           {caseSummary && <span className="status-pill">{caseSummary.status}</span>}

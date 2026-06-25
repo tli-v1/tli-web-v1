@@ -9,8 +9,8 @@ import {
   createIncident,
   createParties,
   deleteCase,
-} from '../api/intake'
-import { ensureUserProfile } from '../api/userProfile'
+} from '../../api/intake'
+import { ensureUserProfile } from '../../api/userProfile'
 import {
   applyIntakeAnswerAndAdvance,
   buildIntakeSummary,
@@ -22,17 +22,18 @@ import {
   isIntakeRequest,
   type ChatIntakeDraft,
   type ChatIntakeStep,
-} from '../agent/intakeFlow'
-import { analyzeImageRelevance, canAnalyzeImage } from '../agent/fileRelevance'
-import type { User } from '../types'
+} from '../../agent/intakeFlow'
+import { analyzeImageRelevance, canAnalyzeImage } from '../../agent/fileRelevance'
+import type { User } from '../../types'
 import {
   minervaModel,
   saveMinervaExchange,
   type MinervaChatMessage,
-} from '../agent/initialize'
-import { isCaseIntakeRelevant, offTopicMessage } from '../agent/relevance'
-import { removeFiles, uploadFile } from '../storage/fileUpload'
-import { useVoiceInput } from '../hooks/useVoiceInput'
+} from '../../agent/initialize'
+import { isCaseIntakeRelevant, offTopicMessage } from '../../agent/relevance'
+import { removeFiles, uploadFile } from '../../storage/fileUpload'
+import { useVoiceInput } from '../../hooks/useVoiceInput'
+import './ChatWidget.css'
 
 interface Message {
   id: string
@@ -236,7 +237,7 @@ export function ChatWidget(props: ChatWidgetProps) {
       }
 
       const fileNote = attachedFiles.length ? ` I also uploaded ${attachedFiles.length} file${attachedFiles.length === 1 ? '' : 's'}.` : ''
-      appendAssistantMessage(`Your intake has been submitted. Case ID: ${createdCaseId}.${fileNote}`)
+      appendAssistantMessage(`Your intake has been submitted.${fileNote}`)
       resetIntake()
     } catch (error) {
       if (createdCaseId) {

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { updatePassword } from '../api/auth'
+import { updatePassword } from '../../api/auth'
+import './ResetPassword.css'
 
 function ResetPassword() {
   const [newPassword, setNewPassword] = useState('')
@@ -33,7 +34,7 @@ function ResetPassword() {
 
   return (
     <main className="dashboard">
-      <section className="card dashboard-card auth-gate">
+      <section className="card dashboard-card auth-gate reset-password-card">
         <div className="dashboard-head">
           <div>
             <p className="eyebrow">Reset password</p>

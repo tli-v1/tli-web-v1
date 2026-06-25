@@ -1,0 +1,16 @@
+.footer {
+  background: var(--navy-900);
+  color: #e5ecf5;
+  border-radius: 18px;
+  padding: 1rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+}
+
+.footer span:last-child {
+  color: #cbd7eb;
+}

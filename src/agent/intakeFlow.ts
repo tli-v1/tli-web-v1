@@ -1,3 +1,5 @@
+import { intakeFormSchema } from "../intake/intakeFormSchema";
+
 export interface ChatIntakeDraft {
   whatHappened: string;
   incidentDate: string;
@@ -64,34 +66,23 @@ export const emptyChatIntakeDraft: ChatIntakeDraft = {
 
 const roundToCents = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
+const localIsoDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const currencyString = (value: string) => {
   const amount = Number(value);
   return Number.isFinite(amount) ? roundToCents(amount).toFixed(2) : value;
 };
 
-const stepOrder: ChatIntakeStep[] = [
-  "whatHappened",
-  "incidentDate",
-  "location",
-  "adverseParty",
-  "insurerInfo",
-  "documents",
-  "damages",
-  "contact",
-  "consent",
-];
+const stepOrder = intakeFormSchema.chatSteps.map((step) => step.id) as ChatIntakeStep[];
 
-const questions: Record<ChatIntakeStep, string> = {
-  whatHappened: "Let’s start the intake. In 1-3 sentences, what happened?",
-  incidentDate: "What date did this happen? A date like 2026-05-06 works best.",
-  location: "What city and state did it happen in?",
-  adverseParty: "Who else was involved? Share the adverse party’s name or say unknown.",
-  insurerInfo: "Do you have any insurance info, policy number, or claim number? If not, say none.",
-  documents: "Do you have documents or photos, or do you authorize the legal team to retrieve reports if needed? Reply yes to authorize, or briefly describe what you have.",
-  damages: "What are the damages so far? Medical bills are optional. Please include days missed from work and your approximate hourly rate if known. Use 0 for anything that does not apply.",
-  contact: "What is your full name, preferred contact method, email, and phone number if you want calls or texts?",
-  consent: "Do you consent to True Legal storing this intake and contacting you about it? Reply yes or no.",
-};
+const questions = Object.fromEntries(
+  intakeFormSchema.chatSteps.map((step) => [step.id, step.prompt])
+) as Record<ChatIntakeStep, string>;
 
 export function isIntakeRequest(text: string): boolean {
   const normalized = normalize(text);
@@ -174,14 +165,13 @@ export function applyIntakeAnswer(
       return accept(next);
 
     case "documents":
-      if (context.attachedFileCount && context.attachedFileCount > 0) {
-        next.authorizeDocuments = true;
-        return accept(next);
+      if (!hasDocumentAnswer(trimmed)) {
+        return retry(next, "Please reply yes if you authorize TLI to receive, organize, and share your submitted information for attorney matching purposes.");
       }
-      if (isUnusableAnswer(trimmed, { allowUnknown: true }) || !hasDocumentAnswer(trimmed)) {
-        return retry(next, "Please say whether you have documents/photos, authorize the team to retrieve reports, or say none.");
+      next.authorizeDocuments = /\b(yes|authorize|authorized|agree|consent|permission)\b/i.test(trimmed);
+      if (!next.authorizeDocuments) {
+        return retry(next, "Authorization is required to submit an intake. Please reply yes if you authorize TLI to receive, organize, and share your submitted information for attorney matching purposes.");
       }
-      next.authorizeDocuments = !/\b(no|not yet|none|do not|don't)\b/i.test(trimmed);
       return accept(next);
 
     case "damages": {
@@ -424,7 +414,7 @@ function parseDate(text: string): string | null {
 
   const parsed = new Date(cleaned);
   if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toISOString().slice(0, 10);
+  return localIsoDate(parsed);
 }
 
 function removeDateOrdinals(text: string): string {
@@ -437,17 +427,26 @@ function monthNumber(monthName: string): number {
 }
 
 function validIsoDate(year: string, month: string, day: string): string | null {
-  const normalized = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-  const parsed = new Date(`${normalized}T00:00:00`);
+  const parsedYear = Number(year);
+  const parsedMonth = Number(month);
+  const parsedDay = Number(day);
+  if (!Number.isInteger(parsedYear) || !Number.isInteger(parsedMonth) || !Number.isInteger(parsedDay)) return null;
+
+  const normalized = `${String(parsedYear).padStart(4, "0")}-${String(parsedMonth).padStart(2, "0")}-${String(parsedDay).padStart(2, "0")}`;
+  const parsed = new Date(parsedYear, parsedMonth - 1, parsedDay);
   if (Number.isNaN(parsed.getTime())) return null;
-  if (parsed.toISOString().slice(0, 10) !== normalized) return null;
+  if (
+    parsed.getFullYear() !== parsedYear ||
+    parsed.getMonth() !== parsedMonth - 1 ||
+    parsed.getDate() !== parsedDay
+  ) {
+    return null;
+  }
   return normalized;
 }
 
 function isFutureDate(date: string): boolean {
-  const today = new Date();
-  const todayIso = today.toISOString().slice(0, 10);
-  return date > todayIso;
+  return date > localIsoDate(new Date());
 }
 
 function parseLocation(text: string): { city: string; state: string } | null {
@@ -475,7 +474,7 @@ function isUnknownAnswer(text: string): boolean {
 }
 
 function hasDocumentAnswer(text: string): boolean {
-  return /\b(yes|authorize|permission|retrieve|report|photo|picture|image|document|pdf|file|police|medical|bill|insurance|claim|no|none|not yet|don't|do not)\b/i.test(text);
+  return /\b(yes|authorize|authorized|agree|consent|permission|no|none|not yet|don't|do not)\b/i.test(text);
 }
 
 function applyInsurerInfo(draft: ChatIntakeDraft, text: string) {
