@@ -40,7 +40,6 @@
 .logo-text {
   font-weight: 800;
   font-size: 1.1rem;
-  letter-spacing: 0.075em;
   color: var(--navy-900);
 }
 
@@ -185,7 +184,6 @@
     max-width: 13rem;
     overflow: hidden;
     font-size: 0.78rem;
-    letter-spacing: 0.055em;
     line-height: 1.15;
     text-overflow: ellipsis;
     white-space: nowrap;

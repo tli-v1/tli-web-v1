@@ -23,8 +23,19 @@
     #0f172a;
 }
 
+.realtime-intake--all-set {
+  display: grid;
+  grid-template: 1fr / 1fr;
+  place-items: center;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at center, rgba(34, 197, 94, 0.24) 0, rgba(37, 99, 235, 0.12) 30%, transparent 58%),
+    #0f172a;
+  animation: realtime-intake-all-set-screen 1400ms ease both;
+}
+
 .realtime-intake--ready {
-  animation: realtime-intake-ready 420ms ease both;
+  animation: realtime-intake-ready 820ms ease both;
 }
 
 .realtime-intake .realtime-intake__loading-close {
@@ -63,6 +74,15 @@
 .realtime-intake__loading-mark svg {
   width: 32px;
   height: 32px;
+}
+
+.realtime-intake__all-set-content {
+  animation: realtime-intake-all-set-content 1400ms ease both;
+}
+
+.realtime-intake__all-set-mark {
+  background: #22c55e;
+  box-shadow: 0 0 0 12px rgba(34, 197, 94, 0.14);
 }
 
 .realtime-intake__loading-content h2 {
@@ -408,6 +428,8 @@
 }
 
 .realtime-intake .realtime-intake__mic-toggle {
+  position: relative;
+  overflow: hidden;
   display: grid;
   flex: 0 0 auto;
   width: 42px;
@@ -416,29 +438,77 @@
   padding: 0;
   place-items: center;
   border-radius: 50%;
-  background: #334155;
+  background:
+    linear-gradient(158deg, rgba(255, 255, 255, 0.22) 0 12%, rgba(255, 255, 255, 0.08) 13% 23%, transparent 24%),
+    linear-gradient(145deg, #475569, #27364a 58%, #3b4b60);
+  box-shadow:
+    0 10px 22px rgba(2, 6, 23, 0.28),
+    0 3px 0 rgba(2, 6, 23, 0.2),
+    inset 0 1px 1px rgba(255, 255, 255, 0.22),
+    inset 0 -8px 14px rgba(2, 6, 23, 0.2);
+  transition: box-shadow 150ms ease, filter 150ms ease, transform 150ms ease;
+}
+
+.realtime-intake .realtime-intake__mic-toggle::before {
+  position: absolute;
+  inset: 7px 8px auto 8px;
+  height: 14px;
+  pointer-events: none;
+  content: "";
+  border-radius: 999px 999px 45% 45%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.06) 72%, transparent);
+  opacity: 0.58;
+  transform: rotate(-8deg);
+}
+
+.realtime-intake .realtime-intake__mic-toggle > svg,
+.realtime-intake .realtime-intake__mic-toggle > span {
+  position: relative;
+  z-index: 1;
 }
 
 .realtime-intake .realtime-intake__mic-toggle.is-live {
-  background: #16a34a;
+  background:
+    linear-gradient(158deg, rgba(255, 255, 255, 0.26) 0 12%, rgba(255, 255, 255, 0.08) 13% 23%, transparent 24%),
+    linear-gradient(145deg, #22c55e, #15803d 58%, #16a34a);
+  box-shadow:
+    0 10px 24px rgba(22, 163, 74, 0.24),
+    0 3px 0 rgba(5, 46, 22, 0.18),
+    inset 0 1px 1px rgba(255, 255, 255, 0.28),
+    inset 0 -8px 14px rgba(5, 46, 22, 0.2);
+}
+
+.realtime-intake .realtime-intake__mic-toggle:not(:disabled):hover {
+  box-shadow:
+    0 12px 26px rgba(2, 6, 23, 0.3),
+    0 4px 0 rgba(2, 6, 23, 0.2),
+    inset 0 1px 1px rgba(255, 255, 255, 0.24),
+    inset 0 -8px 14px rgba(2, 6, 23, 0.2);
+  transform: translateY(-1px);
+}
+
+.realtime-intake .realtime-intake__mic-toggle.is-live:not(:disabled):hover {
+  box-shadow:
+    0 12px 26px rgba(22, 163, 74, 0.26),
+    0 4px 0 rgba(5, 46, 22, 0.18),
+    inset 0 1px 1px rgba(255, 255, 255, 0.3),
+    inset 0 -8px 14px rgba(5, 46, 22, 0.2);
+}
+
+.realtime-intake .realtime-intake__mic-toggle:not(:disabled):active {
+  box-shadow:
+    0 3px 9px rgba(2, 6, 23, 0.22),
+    0 1px 0 rgba(2, 6, 23, 0.12),
+    inset 0 4px 9px rgba(2, 6, 23, 0.28),
+    inset 0 -2px 7px rgba(255, 255, 255, 0.18);
+  filter: saturate(0.98);
+  transform: translateY(3px) scale(0.97);
 }
 
 .realtime-intake__mic-active-icon {
   position: relative;
   display: grid;
   place-items: center;
-}
-
-.realtime-intake__mic-mute-badge {
-  position: absolute;
-  top: -8px;
-  right: -10px;
-  width: 14px;
-  height: 14px;
-  padding: 2px;
-  border-radius: 50%;
-  background: #0f172a;
-  stroke-width: 3;
 }
 
 .realtime-intake .realtime-intake__mic-toggle:disabled {
@@ -647,12 +717,56 @@
 @keyframes realtime-intake-ready {
   from {
     opacity: 0;
-    transform: scale(0.985);
+    transform: scale(0.975);
+    filter: blur(8px);
+  }
+
+  45% {
+    opacity: 0.45;
+    filter: blur(4px);
   }
 
   to {
     opacity: 1;
     transform: scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes realtime-intake-all-set-screen {
+  0%,
+  12% {
+    opacity: 0;
+    filter: blur(5px);
+  }
+
+  30%,
+  70% {
+    opacity: 1;
+    filter: blur(0);
+  }
+
+  100% {
+    opacity: 0;
+    filter: blur(5px);
+  }
+}
+
+@keyframes realtime-intake-all-set-content {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+
+  30%,
+  70% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
   }
 }
 

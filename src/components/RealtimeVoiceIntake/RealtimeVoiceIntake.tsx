@@ -2,10 +2,19 @@ import { ArrowUp, Check, LoaderCircle, Mic, MicOff, Paperclip, X } from 'lucide-
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { addConversationalIntakeFile } from '../../agent/initialize'
-import { getSession, signInWithPassword, signUp } from '../../api/auth'
+import {
+  getSession,
+  signInWithApple,
+  signInWithGoogle,
+  signInWithPassword,
+  signUp,
+} from '../../api/auth'
 import { useRealtimeVoice } from '../../hooks/useRealtimeVoice'
 import { uploadConversationalIntakeFile } from '../../storage/fileUpload'
 import type { User } from '../../types'
+import SocialAuthButtons, {
+  type SocialAuthProvider,
+} from '../SocialAuthButtons/SocialAuthButtons'
 import './RealtimeVoiceIntake.css'
 
 interface RealtimeVoiceIntakeProps {
@@ -19,6 +28,7 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
   const endRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const finalizingRef = useRef(false)
+  const hasShownPreparingRef = useRef(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
@@ -29,7 +39,9 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
   const [authPassword, setAuthPassword] = useState('')
   const [authError, setAuthError] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
+  const [socialAuthLoading, setSocialAuthLoading] = useState<SocialAuthProvider | null>(null)
   const [intakeSaved, setIntakeSaved] = useState(false)
+  const [showReadyTransition, setShowReadyTransition] = useState(false)
 
   const showFileUpload = useMemo(() => {
     const latestAssistantMessage = [...realtime.messages]
@@ -74,6 +86,23 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
     && !realtime.hasAssistantStarted
     && realtime.messages.length === 0
   )
+
+  useEffect(() => {
+    if (isPreparing) {
+      hasShownPreparingRef.current = true
+      setShowReadyTransition(false)
+      return undefined
+    }
+
+    if (!hasShownPreparingRef.current) return undefined
+
+    setShowReadyTransition(true)
+    const readyTimer = window.setTimeout(() => {
+      setShowReadyTransition(false)
+    }, 1400)
+
+    return () => window.clearTimeout(readyTimer)
+  }, [isPreparing])
 
   const submitTextMessage = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -180,6 +209,30 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
     }
   }
 
+  const submitSocialAuthentication = async (provider: SocialAuthProvider) => {
+    setAuthLoading(true)
+    setSocialAuthLoading(provider)
+    setAuthError('')
+
+    try {
+      const response = provider === 'google'
+        ? await signInWithGoogle()
+        : await signInWithApple()
+
+      if (response.error) throw new Error(response.error.message)
+      if (!response.user) {
+        throw new Error('Authentication completed without a user account.')
+      }
+
+      await finalizeIntake(response.user)
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Authentication failed.')
+    } finally {
+      setSocialAuthLoading(null)
+      if (!finalizingRef.current) setAuthLoading(false)
+    }
+  }
+
   const selectPendingFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
     if (!files.length) return
@@ -195,10 +248,12 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
     event.target.value = ''
   }
 
-  if (isPreparing) {
+  if (isPreparing || showReadyTransition) {
     return (
       <section
-        className="realtime-intake realtime-intake--loading"
+        className={`realtime-intake ${
+          showReadyTransition ? 'realtime-intake--all-set' : 'realtime-intake--loading'
+        }`}
         aria-label="Preparing conversational legal intake"
         aria-live="polite"
       >
@@ -210,18 +265,28 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
         >
           <X aria-hidden="true" />
         </button>
-        <div className="realtime-intake__loading-content">
-          <div className="realtime-intake__loading-mark" aria-hidden="true">
-            <Mic />
+        {showReadyTransition ? (
+          <div className="realtime-intake__loading-content realtime-intake__all-set-content">
+            <div className="realtime-intake__loading-mark realtime-intake__all-set-mark" aria-hidden="true">
+              <Check />
+            </div>
+            <h2>All Set!</h2>
+            <p>Minerva is ready to start.</p>
           </div>
-          <h2>Getting things ready for you!</h2>
-          <p>Minerva will be with you in just a moment</p>
-          <span className="realtime-intake__loading-dots" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
-        </div>
+        ) : (
+          <div className="realtime-intake__loading-content">
+            <div className="realtime-intake__loading-mark" aria-hidden="true">
+              <Mic />
+            </div>
+            <h2>Getting things ready for you!</h2>
+            <p>Minerva will be with you in just a moment</p>
+            <span className="realtime-intake__loading-dots" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+          </div>
+        )}
       </section>
     )
   }
@@ -258,11 +323,6 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
       </header>
 
       <div className="realtime-intake__messages" aria-live="polite">
-        {!realtime.messages.length && realtime.status !== 'error' && (
-          <p className="realtime-intake__hint">
-            Minerva is speaking…
-          </p>
-        )}
         {realtime.messages.map((message) => (
           <article
             key={message.id}
@@ -333,6 +393,11 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
                   </button>
                 </div>
               </div>
+              <SocialAuthButtons
+                disabled={authLoading}
+                loadingProvider={socialAuthLoading}
+                onSelect={submitSocialAuthentication}
+              />
               <div className="realtime-intake__auth-fields">
                 <label>
                   <span>Email</span>
@@ -392,8 +457,7 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
               ? <MicOff aria-hidden="true" />
               : (
                 <span className="realtime-intake__mic-active-icon" aria-hidden="true">
-                  <Mic />
-                  <X className="realtime-intake__mic-mute-badge" />
+                  <MicOff />
                 </span>
               )}
           </button>

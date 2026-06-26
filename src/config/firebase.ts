@@ -5,10 +5,20 @@ import { getFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 import { getStorage } from "firebase/storage";
 
+function normalizeAuthDomain(value: string | undefined): string | undefined {
+  if (!value) return value;
+
+  try {
+    const withProtocol = value.includes('://') ? value : `https://${value}`;
+    return new URL(withProtocol).hostname;
+  } catch {
+    return value.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  }
+}
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  authDomain: normalizeAuthDomain(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN),
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,

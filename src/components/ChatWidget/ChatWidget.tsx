@@ -31,7 +31,12 @@ import {
   type ChatIntakeStep,
 } from '../../agent/intakeFlow'
 import { preloadConversationalSpeech } from '../../api/speech'
-import { signInWithPassword, signUp } from '../../api/auth'
+import {
+  signInWithApple,
+  signInWithGoogle,
+  signInWithPassword,
+  signUp,
+} from '../../api/auth'
 import {
   addConversationalIntakeFile,
   ensureConversationalIntakeSession,
@@ -47,6 +52,9 @@ import { useSpeechOutput } from '../../hooks/useSpeechOutput'
 import { useVoiceInput } from '../../hooks/useVoiceInput'
 import { uploadConversationalIntakeFile } from '../../storage/fileUpload'
 import type { User } from '../../types'
+import SocialAuthButtons, {
+  type SocialAuthProvider,
+} from '../SocialAuthButtons/SocialAuthButtons'
 import './ChatWidget.css'
 
 interface Message {
@@ -103,6 +111,7 @@ export function ChatWidget({
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
+  const [socialAuthLoading, setSocialAuthLoading] = useState<SocialAuthProvider | null>(null)
   const [authError, setAuthError] = useState('')
   const [healthNoticeAccepted, setHealthNoticeAccepted] = useState(false)
   const [processedCaseId, setProcessedCaseId] = useState('')
@@ -369,6 +378,32 @@ export function ChatWidget({
     }
   }
 
+  const handleSocialAuth = async (provider: SocialAuthProvider) => {
+    setAuthLoading(true)
+    setSocialAuthLoading(provider)
+    setAuthError('')
+
+    try {
+      const response = provider === 'google'
+        ? await signInWithGoogle()
+        : await signInWithApple()
+
+      if (response.error) throw new Error(response.error.message)
+      if (!response.user) {
+        throw new Error('Authentication completed without a user account.')
+      }
+
+      appendAssistantMessage(
+        'You’re signed in. I’m processing the intake for your dashboard now.',
+      )
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Authentication failed.')
+    } finally {
+      setSocialAuthLoading(null)
+      setAuthLoading(false)
+    }
+  }
+
   const handleIntakeAnswer = async (
     userMessage: Message,
     activeStep: ChatIntakeStep,
@@ -626,6 +661,11 @@ export function ChatWidget({
               </button>
             </div>
           </div>
+          <SocialAuthButtons
+            disabled={authLoading}
+            loadingProvider={socialAuthLoading}
+            onSelect={handleSocialAuth}
+          />
           <div className="chat-widget__auth-fields">
             <label>
               <span>Email</span>

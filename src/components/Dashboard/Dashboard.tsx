@@ -1,9 +1,21 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getUserCases } from '../../api/cases'
-import { getSession, onAuthStateChange, signUp, signInWithPassword, signOut, resetPasswordForEmail } from '../../api/auth'
+import {
+  getSession,
+  onAuthStateChange,
+  resetPasswordForEmail,
+  signInWithApple,
+  signInWithGoogle,
+  signInWithPassword,
+  signOut,
+  signUp,
+} from '../../api/auth'
 import { getUserProfile } from '../../api/userProfile'
 import type { User, CaseSummary } from '../../types'
+import SocialAuthButtons, {
+  type SocialAuthProvider,
+} from '../SocialAuthButtons/SocialAuthButtons'
 import './Dashboard.css'
 
 function Dashboard() {
@@ -15,6 +27,7 @@ function Dashboard() {
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
+  const [socialAuthLoading, setSocialAuthLoading] = useState<SocialAuthProvider | null>(null)
   const [authError, setAuthError] = useState('')
   const [authMessage, setAuthMessage] = useState('')
   const [cases, setCases] = useState<CaseSummary[]>([])
@@ -179,6 +192,30 @@ function Dashboard() {
     }
   }
 
+  const handleSocialAuth = async (provider: SocialAuthProvider) => {
+    setAuthLoading(true)
+    setSocialAuthLoading(provider)
+    setAuthError('')
+    setAuthMessage('')
+
+    try {
+      const response = provider === 'google'
+        ? await signInWithGoogle()
+        : await signInWithApple()
+
+      if (response.error) throw new Error(response.error.message)
+      if (!response.user) throw new Error('Authentication completed without a user account.')
+
+      setSessionUser(response.user)
+      setAuthMessage('Signed in successfully.')
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Authentication failed.')
+    } finally {
+      setSocialAuthLoading(null)
+      setAuthLoading(false)
+    }
+  }
+
   const handleSignOut = async () => {
     setSigningOut(true)
     setSignOutError('')
@@ -199,6 +236,11 @@ function Dashboard() {
             <div>
               <p className="eyebrow">Secure dashboard</p>
               <h1>{authMode === 'signup' ? 'Create Account' : 'Sign In'}</h1>
+              <p className="auth-gate__subtitle">
+                {authMode === 'signup'
+                  ? 'Create a secure account to manage your intake and case documents.'
+                  : 'Access your intake, case updates, and documents securely.'}
+              </p>
             </div>
           </div>
 
@@ -227,6 +269,12 @@ function Dashboard() {
             </button>
           </div>
 
+          <SocialAuthButtons
+            disabled={authLoading}
+            loadingProvider={socialAuthLoading}
+            onSelect={handleSocialAuth}
+          />
+
           <label className="field">
             <span>Email</span>
             <input
@@ -253,11 +301,17 @@ function Dashboard() {
             />
           </label>
 
-          {authMode === 'login' && (
-            <button type="button" className="link-button" onClick={handlePasswordReset} disabled={authLoading}>
+          <div className={`auth-reset-slot ${authMode !== 'login' ? 'auth-reset-slot--hidden' : ''}`}>
+            <button
+              type="button"
+              className="link-button"
+              onClick={handlePasswordReset}
+              disabled={authLoading || authMode !== 'login'}
+              tabIndex={authMode === 'login' ? 0 : -1}
+            >
               Forgot password? Email me a reset link
             </button>
-          )}
+          </div>
 
           <button type="button" className="btn accent" onClick={handleAuthAction} disabled={authLoading}>
             {authLoading ? 'Saving...' : authMode === 'signup' ? 'Create account' : 'Log in'}

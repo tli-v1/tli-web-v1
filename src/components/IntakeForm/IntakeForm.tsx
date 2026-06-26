@@ -988,16 +988,17 @@ function IntakeForm() {
               {formData.email ? <strong>{formData.email}</strong> : 'Enter your email above first'}
             </p>
 
-            {authMode === 'login' && (
+            <div className={`auth-reset-slot ${authMode !== 'login' ? 'auth-reset-slot--hidden' : ''}`}>
               <button
                 type="button"
                 className="link-button"
                 onClick={handlePasswordReset}
-                disabled={resetLoading}
+                disabled={resetLoading || authMode !== 'login'}
+                tabIndex={authMode === 'login' ? 0 : -1}
               >
                 {resetLoading ? 'Sending reset link...' : 'Forgot password? Email me a reset link'}
               </button>
-            )}
+            </div>
 
             <button
               type="button"

@@ -12,12 +12,20 @@
 }
 
 .auth-gate {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   max-width: 640px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
   padding-bottom: clamp(2rem, 3vw, 3.5rem);
+  border: 1px solid rgba(59, 93, 163, 0.22);
+  background:
+    radial-gradient(circle at 50% 0, rgba(59, 130, 246, 0.14), transparent 34%),
+    linear-gradient(160deg, #ffffff 0%, #f8faff 58%, #eef3fc 100%);
+  box-shadow: 0 24px 70px rgba(15, 29, 60, 0.16);
 }
 
 .auth-gate .dashboard-head {
@@ -25,10 +33,99 @@
   text-align: center;
 }
 
+.auth-gate .dashboard-head > div {
+  width: 100%;
+}
+
+.auth-gate .eyebrow {
+  margin: 0 0 0.35rem;
+  color: #31589c;
+  font-weight: 800;
+}
+
+.auth-gate .dashboard-head h1 {
+  margin: 0;
+  color: var(--navy-1000);
+}
+
+.auth-gate__subtitle {
+  max-width: 440px;
+  margin: 0.45rem auto 0;
+  color: #64748b;
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
+.auth-gate .auth-toggle {
+  width: fit-content;
+  margin: 0 auto;
+  padding: 4px;
+  gap: 4px;
+  border: 1px solid #dbe3f0;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.72);
+}
+
+.auth-gate .chip {
+  min-height: 38px;
+  border: 0;
+  padding-inline: 1.2rem;
+  background: transparent;
+  box-shadow: none;
+}
+
+.auth-gate .chip--active {
+  background: var(--navy-800);
+  color: #fff;
+  box-shadow: 0 5px 14px rgba(32, 58, 115, 0.2);
+}
+
+.auth-gate .field {
+  gap: 0.4rem;
+}
+
+.auth-gate .field input {
+  min-height: 48px;
+  border-color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.auth-gate .btn.accent {
+  min-height: 48px;
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(246, 180, 0, 0.2);
+}
+
+.auth-gate .link-button {
+  align-self: center;
+}
+
+.auth-reset-slot {
+  display: flex;
+  min-height: 1.65rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-reset-slot--hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.auth-gate .social-auth__buttons button {
+  min-height: 48px;
+}
+
 .auth-footer {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  padding-top: 0.25rem;
+  text-align: center;
+}
+
+.auth-footer .btn {
+  align-self: center;
 }
 
 .dashboard-head {
@@ -120,5 +217,45 @@
   .dashboard-head {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .dashboard {
+    padding-bottom: 1rem;
+  }
+
+  .auth-gate {
+    gap: 1rem;
+    padding: 1.5rem 1.1rem;
+    border-radius: 22px;
+  }
+
+  .auth-gate .dashboard-head {
+    align-items: center;
+    text-align: center;
+  }
+
+  .auth-gate .dashboard-head h1 {
+    font-size: clamp(1.8rem, 9vw, 2.2rem);
+  }
+
+  .auth-gate__subtitle {
+    max-width: 32ch;
+    font-size: 0.88rem;
+  }
+
+  .auth-gate .auth-toggle {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .auth-gate .chip {
+    width: 100%;
+    padding-inline: 0.7rem;
+  }
+
+  .auth-gate .btn.accent,
+  .auth-footer .btn {
+    width: 100%;
   }
 }

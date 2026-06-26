@@ -252,6 +252,18 @@ input[type='file']::-webkit-file-upload-button:hover {
   gap: 0.75rem;
 }
 
+.auth-reset-slot {
+  display: flex;
+  min-height: 1.65rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-reset-slot--hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .chip {
   border: 1px solid #d6dce8;
   border-radius: 999px;
