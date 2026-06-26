@@ -298,7 +298,7 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
     >
       <header className="realtime-intake__header">
         <div>
-          <h2>Talk with Minerva</h2>
+          <h2>Share what happened</h2>
           <p>
             {realtime.status === 'connecting' && 'Connecting secure voice session…'}
             {realtime.status === 'connected' && (

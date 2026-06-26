@@ -29,16 +29,21 @@
 #root {
   width: 100%;
   margin: 0 auto;
-  padding: clamp(1.25rem, 2vw, 3rem);
-  max-width: 1600px;
+  padding: 0;
 }
 
 .site-shell {
+  position: relative;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
   width: 100%;
+}
+
+.site-shell > :not(.navbar):not(.landing) {
+  margin-top: clamp(6rem, 8vw, 7.5rem);
+  padding-right: clamp(1.25rem, 2vw, 3rem);
+  padding-left: clamp(1.25rem, 2vw, 3rem);
 }
 
 .page {

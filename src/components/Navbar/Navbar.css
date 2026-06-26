@@ -1,12 +1,18 @@
 .navbar {
-  width: min(100%, 1300px);
-  margin: 0 auto;
+  position: absolute;
+  top: clamp(1.25rem, 2vw, 3rem);
+  left: 50%;
+  z-index: 40;
+  width: min(calc(100% - clamp(2.5rem, 4vw, 6rem)), 1300px);
+  margin: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
-  padding: 0rem 0 1.25rem;
+  padding: 0;
+  background: transparent;
+  transform: translateX(-50%);
 }
 
 .nav-left {
@@ -25,6 +31,10 @@
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+  color: rgba(248, 251, 255, 0.9);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-shadow: 0 10px 22px rgba(2, 8, 28, 0.26);
 }
 
 .logo-img {
@@ -34,7 +44,6 @@
   background: none;
   padding: 0;
   box-shadow: none;
-  mix-blend-mode: multiply;
 }
 
 .logo-text {
@@ -65,7 +74,7 @@
   display: block;
   width: 18px;
   height: 2px;
-  background: var(--navy-900);
+  background: rgba(248, 251, 255, 0.92);
   border-radius: 999px;
   transition: transform 150ms ease, opacity 150ms ease;
 }
@@ -92,7 +101,7 @@
 
 .menu-toggle:active span,
 .menu-toggle:focus span {
-  background: var(--navy-900);
+  background: rgba(248, 251, 255, 0.92);
 }
 
 .menu-toggle:focus-visible,
@@ -129,40 +138,61 @@
 }
 
 .nav-intake {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   border-radius: 999px;
-  border: 1px solid var(--navy-700);
-  color: var(--navy-700);
-  padding: 0.5rem 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.58);
+  background:
+    linear-gradient(180deg, rgba(13, 29, 63, 0.92), rgba(7, 18, 43, 0.96));
+  color: rgba(248, 251, 255, 0.94);
+  padding: 0.56rem 1.25rem;
   font-weight: 700;
-  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+  box-shadow:
+    0 12px 24px rgba(2, 8, 28, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+  transition: border-color 150ms ease, box-shadow 150ms ease, filter 150ms ease, transform 150ms ease;
+}
+
+.nav-intake::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+  border-radius: inherit;
+  background:
+    linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.2) 24%, transparent 46%),
+    radial-gradient(ellipse at 50% 0%, rgba(255, 255, 255, 0.22), transparent 62%);
+  opacity: 0.72;
 }
 
 .nav-intake:hover {
-  background-color: #fff;
-  color: var(--navy-900);
-  border-color: var(--navy-800);
-}
-
-.nav-actions .btn.accent {
-  border-radius: 999px;
-  background-color: var(--navy-900);
+  border-color: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    0 14px 28px rgba(2, 8, 28, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.12);
   color: #fff;
-}
-
-.nav-actions .btn.accent:hover {
-  background-color: var(--navy-800);
-  color: #fff;
+  filter: brightness(1.08);
+  transform: translateY(-1px);
 }
 
 @media (max-width: 640px) {
   .navbar {
-    position: relative;
+    position: absolute;
+    top: 1rem;
+    left: 50%;
     z-index: 50;
     flex-direction: column;
     align-items: flex-start;
     gap: 0;
-    width: 100%;
+    width: calc(100% - 2rem);
+    margin: 0;
     padding: 0.25rem 0 0.8rem;
+    transform: translateX(-50%);
   }
 
   .nav-left {
@@ -198,7 +228,8 @@
     margin-left: auto;
     align-self: center;
     border: 1px solid rgba(26, 47, 95, 0.12);
-    background: rgba(255, 255, 255, 0.72) !important;
+    background: rgba(7, 18, 43, 0.38) !important;
+    backdrop-filter: blur(10px);
   }
 
   .menu-line {
@@ -212,8 +243,7 @@
   }
 
   .nav-links a,
-  .nav-actions a,
-  .nav-actions .btn {
+  .nav-actions a {
     width: 100%;
   }
 
@@ -228,14 +258,14 @@
     gap: 0.65rem;
     margin-top: 0.75rem;
     padding: 0.75rem;
-    border: 1px solid rgba(26, 47, 95, 0.12);
+    border: 1px solid rgba(226, 232, 240, 0.18);
     border-radius: 16px;
-    background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 16px 36px rgba(15, 29, 60, 0.12);
+    background: rgba(7, 18, 43, 0.58);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 16px 36px rgba(2, 8, 28, 0.22);
   }
 
-  .nav-actions a,
-  .nav-actions .btn {
+  .nav-actions a {
     min-height: 46px;
     text-align: center;
   }

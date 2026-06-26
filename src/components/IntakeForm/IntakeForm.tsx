@@ -1,13 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
-import { getSession, onAuthStateChange, signUp, signInWithPassword, signOut, resetPasswordForEmail } from '../../api/auth'
+import {
+  getSession,
+  onAuthStateChange,
+  resetPasswordForEmail,
+  signInWithApple,
+  signInWithGoogle,
+  signInWithPassword,
+  signOut,
+  signUp,
+} from '../../api/auth'
 import { getStateCodes, type StateCode } from '../../api/stateCodes'
 import { ensureUserProfile } from '../../api/userProfile'
 import { createCase, deleteCase, createIncident, createDamages, createCaseContact, createParties, createDocument } from '../../api/intake'
 import { uploadFile, removeFiles } from '../../storage/fileUpload'
 import { intakeFormSchema } from '../../intake/intakeFormSchema'
 import type { User } from '../../types'
+import SocialAuthButtons, {
+  type SocialAuthProvider,
+} from '../SocialAuthButtons/SocialAuthButtons'
 import './IntakeForm.css'
 
 const steps = intakeFormSchema.sections
@@ -117,6 +129,7 @@ function IntakeForm() {
   const [authMode, setAuthMode] = useState<'signup' | 'login'>('signup')
   const [authPassword, setAuthPassword] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
+  const [socialAuthLoading, setSocialAuthLoading] = useState<SocialAuthProvider | null>(null)
   const [authError, setAuthError] = useState('')
   const [authMessage, setAuthMessage] = useState('')
   const [resetLoading, setResetLoading] = useState(false)
@@ -378,6 +391,31 @@ function IntakeForm() {
       setAuthError(error.message)
     } finally {
       setResetLoading(false)
+    }
+  }
+
+  const handleSocialAuth = async (provider: SocialAuthProvider) => {
+    setAuthLoading(true)
+    setSocialAuthLoading(provider)
+    setAuthError('')
+    setAuthMessage('')
+
+    try {
+      const response = provider === 'google'
+        ? await signInWithGoogle()
+        : await signInWithApple()
+
+      if (response.error) throw new Error(response.error.message)
+      if (!response.user) throw new Error('Authentication completed without a user account.')
+
+      setSessionUser(response.user)
+      setAuthPassword('')
+      setAuthMessage('Signed in successfully.')
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Authentication failed.')
+    } finally {
+      setSocialAuthLoading(null)
+      setAuthLoading(false)
     }
   }
 
@@ -966,6 +1004,12 @@ function IntakeForm() {
                 Log in
               </button>
             </div>
+
+            <SocialAuthButtons
+              disabled={authLoading || resetLoading}
+              loadingProvider={socialAuthLoading}
+              onSelect={handleSocialAuth}
+            />
 
             <label className="field">
               <span>Password</span>

@@ -37,13 +37,16 @@ export default function SocialAuthButtons({
   loadingProvider = null,
   onSelect,
 }: SocialAuthButtonsProps) {
+  const isDisabled = disabled || loadingProvider !== null
+
   return (
     <div className="social-auth">
       <div className="social-auth__buttons">
         <button
           type="button"
           onClick={() => onSelect('google')}
-          disabled={disabled}
+          disabled={isDisabled}
+          aria-label="Continue with Google"
         >
           <GoogleMark />
           <span>{loadingProvider === 'google' ? 'Connecting…' : 'Continue with Google'}</span>
@@ -51,7 +54,8 @@ export default function SocialAuthButtons({
         <button
           type="button"
           onClick={() => onSelect('apple')}
-          disabled={disabled}
+          disabled={isDisabled}
+          aria-label="Continue with Apple"
         >
           <Apple aria-hidden="true" />
           <span>{loadingProvider === 'apple' ? 'Connecting…' : 'Continue with Apple'}</span>

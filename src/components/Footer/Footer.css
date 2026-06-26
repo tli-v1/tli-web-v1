@@ -1,7 +1,9 @@
 .footer {
-  background: var(--navy-900);
+  background:
+    linear-gradient(180deg, rgba(13, 29, 63, 0.94), rgba(7, 18, 43, 0.98));
   color: #e5ecf5;
-  border-radius: 18px;
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  border-radius: 0;
   padding: 1rem 1.25rem;
   display: flex;
   justify-content: space-between;

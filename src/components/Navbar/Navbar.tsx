@@ -36,9 +36,6 @@ function Navbar() {
         <Link to="/dashboard" className="nav-intake" onClick={closeNav}>
           Dashboard
         </Link>
-        <Link to="/base/intake" className="btn accent slim" onClick={closeNav}>
-          Start Intake
-        </Link>
       </div>
     </nav>
   )

@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
 } from 'react'
 import {
+  ArrowUp,
   LucideMaximize2,
   LucideMic,
   LucideMicOff,
@@ -69,6 +70,7 @@ interface ChatWidgetProps {
   initialMessage?: string
   variant?: 'embedded' | 'floating' | 'hero'
   intakeMode?: boolean
+  voiceEnabled?: boolean
   onClose?: () => void
 }
 
@@ -88,9 +90,12 @@ export function ChatWidget({
   initialMessage,
   variant = 'embedded',
   intakeMode = false,
+  voiceEnabled = true,
   onClose,
 }: ChatWidgetProps) {
   const startsInIntake = intakeMode
+  const [authenticatedUser, setAuthenticatedUser] = useState<User | null>(user)
+  const activeUser = authenticatedUser
   const [messages, setMessages] = useState<Message[]>([
     {
       id: welcomeMessageId,
@@ -134,6 +139,10 @@ export function ChatWidget({
   const resumeListeningRef = useRef(false)
 
   useEffect(() => {
+    setAuthenticatedUser(user)
+  }, [user])
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
@@ -160,9 +169,9 @@ export function ChatWidget({
       timestamp: new Date(),
     }
     setMessages((current) => [...current, message])
-    speakRef.current(spokenContent)
+    if (voiceEnabled) speakRef.current(spokenContent)
     return message
-  }, [])
+  }, [voiceEnabled])
 
   const voiceInput = useVoiceInput({
     onTranscript: useCallback((transcript: string) => {
@@ -189,20 +198,23 @@ export function ChatWidget({
 
   const speechOutput = useSpeechOutput({
     onStart: useCallback(() => {
+      if (!voiceEnabled) return
       resumeListeningRef.current = voiceInput.enabled && !manualInputRef.current
       if (voiceInput.enabled) voiceInput.stop()
-    }, [voiceInput]),
+    }, [voiceEnabled, voiceInput]),
     onEnd: useCallback(() => {
+      if (!voiceEnabled) return
       if (resumeListeningRef.current && !manualInputRef.current) {
         resumeListeningRef.current = false
         voiceInput.start()
       }
-    }, [voiceInput]),
+    }, [voiceEnabled, voiceInput]),
   })
 
-  speakRef.current = speechOutput.speak
+  speakRef.current = voiceEnabled ? speechOutput.speak : () => undefined
 
   useEffect(() => {
+    if (!voiceEnabled) return
     const welcomeMessage = messages.find((message) => message.id === welcomeMessageId)
     if (welcomeMessage) speechOutput.speak(welcomeMessage.content)
     getAllIntakeQuestions().forEach(preloadConversationalSpeech)
@@ -218,7 +230,7 @@ export function ChatWidget({
     ) => {
       return saveConversationalIntakeExchange({
         sessionId,
-        userId: user?.id,
+        userId: activeUser?.id,
         userMessage: toConversationalIntakeMessage(userMessage),
         assistantMessage: toConversationalIntakeMessage(assistantMessage),
         intake,
@@ -229,7 +241,7 @@ export function ChatWidget({
         })
         .catch((error) => console.warn('Unable to save intake conversation:', error))
     },
-    [sessionId, user?.id],
+    [activeUser?.id, sessionId],
   )
 
   const processCompletedIntake = useCallback(async (
@@ -280,21 +292,21 @@ export function ChatWidget({
 
   useEffect(() => {
     if (
-      !user
+      !activeUser
       || !awaitingProcessingSignIn
       || !sessionId
       || getNextIntakeStep(intakeDraft) !== null
       || isProcessingIntake
     ) return
 
-    void processCompletedIntake(intakeDraft, sessionId, user)
+    void processCompletedIntake(intakeDraft, sessionId, activeUser)
   }, [
     awaitingProcessingSignIn,
     intakeDraft,
     isProcessingIntake,
     processCompletedIntake,
     sessionId,
-    user,
+    activeUser,
   ])
 
   const handleAttachFiles = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -302,20 +314,20 @@ export function ChatWidget({
     event.target.value = ''
     if (!files.length) return
 
-    if (!user) {
+    if (!activeUser) {
       appendAssistantMessage('Please sign in before attaching files so we can store them securely with your intake.')
       return
     }
 
     setIsUploadingFiles(true)
     try {
-      const activeSessionId = await ensureConversationalIntakeSession(sessionId, user.id)
+      const activeSessionId = await ensureConversationalIntakeSession(sessionId, activeUser.id)
       setSessionId(activeSessionId)
 
       for (const file of files) {
         const upload = await uploadConversationalIntakeFile({
           file,
-          userId: user.id,
+          userId: activeUser.id,
           intakeId: activeSessionId,
         })
         if (upload.error || !upload.path) {
@@ -365,6 +377,11 @@ export function ChatWidget({
         throw new Error(response.error.message)
       }
 
+      if (!response.user) {
+        throw new Error('Authentication completed without a user account.')
+      }
+
+      setAuthenticatedUser(response.user)
       appendAssistantMessage(
         authMode === 'signup'
           ? 'Your account is ready. I’m processing the intake for your dashboard now.'
@@ -393,6 +410,7 @@ export function ChatWidget({
         throw new Error('Authentication completed without a user account.')
       }
 
+      setAuthenticatedUser(response.user)
       appendAssistantMessage(
         'You’re signed in. I’m processing the intake for your dashboard now.',
       )
@@ -413,7 +431,7 @@ export function ChatWidget({
       activeStep,
       userMessage.content,
       {
-        userEmail: user?.email,
+        userEmail: activeUser?.email,
         attachedFileCount: attachedFiles.length,
       },
     )
@@ -447,11 +465,11 @@ export function ChatWidget({
     })
 
     if (nextStep === null && savedSessionId) {
-      if (user) {
+      if (activeUser) {
         appendAssistantMessage(
           'I’m processing your intake now and preparing it for your dashboard.',
         )
-        await processCompletedIntake(result.draft, savedSessionId, user)
+        await processCompletedIntake(result.draft, savedSessionId, activeUser)
       } else {
         setAwaitingProcessingSignIn(true)
         appendAssistantMessage(
@@ -571,6 +589,7 @@ export function ChatWidget({
   }
 
   const toggleVoiceInput = () => {
+    if (!voiceEnabled) return
     manualInputRef.current = false
     setIsManualInput(false)
     speechOutput.stop()
@@ -585,25 +604,29 @@ export function ChatWidget({
       <header className="chat-widget__header">
         <div>
           <h2>Share what happened</h2>
-          <p>Conversational intake · voice or text</p>
+          <p>{voiceEnabled ? 'Conversational intake · voice or text' : 'Conversational intake · text only'}</p>
         </div>
         <div className="chat-widget__header-actions">
-          <button
-            type="button"
-            onClick={speechOutput.toggleMuted}
-            aria-label={speechOutput.muted ? 'Unmute Minerva' : 'Mute Minerva'}
-            aria-pressed={speechOutput.muted}
-            title={speechOutput.muted ? 'Turn voice responses on' : 'Turn voice responses off'}
-          >
-            {speechOutput.muted ? <VolumeX /> : <Volume2 />}
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsFullscreen((current) => !current)}
-            aria-label={isFullscreen ? 'Exit fullscreen chat' : 'Open fullscreen chat'}
-          >
-            {isFullscreen ? <LucideMinimize2 /> : <LucideMaximize2 />}
-          </button>
+          {voiceEnabled && (
+            <button
+              type="button"
+              onClick={speechOutput.toggleMuted}
+              aria-label={speechOutput.muted ? 'Unmute Minerva' : 'Mute Minerva'}
+              aria-pressed={speechOutput.muted}
+              title={speechOutput.muted ? 'Turn voice responses on' : 'Turn voice responses off'}
+            >
+              {speechOutput.muted ? <VolumeX /> : <Volume2 />}
+            </button>
+          )}
+          {voiceEnabled && (
+            <button
+              type="button"
+              onClick={() => setIsFullscreen((current) => !current)}
+              aria-label={isFullscreen ? 'Exit fullscreen chat' : 'Open fullscreen chat'}
+            >
+              {isFullscreen ? <LucideMinimize2 /> : <LucideMaximize2 />}
+            </button>
+          )}
           <button type="button" onClick={close} aria-label="Close chat">
             <X />
           </button>
@@ -619,7 +642,7 @@ export function ChatWidget({
             <p>{message.content}</p>
             <div className="chat-message__meta">
               <time>{message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
-              {message.role === 'assistant' && message.id === messages.at(-1)?.id && speechOutput.supported && (
+              {voiceEnabled && message.role === 'assistant' && message.id === messages.at(-1)?.id && speechOutput.supported && (
                 <button type="button" onClick={() => speechOutput.speak(message.content)}>
                   {speechOutput.speaking ? 'Speaking…' : 'Replay'}
                 </button>
@@ -631,7 +654,7 @@ export function ChatWidget({
         <div ref={messagesEndRef} />
       </div>
 
-      {awaitingProcessingSignIn && !user && (
+      {awaitingProcessingSignIn && !activeUser && (
         <form className="chat-widget__auth" onSubmit={handleInlineAuth}>
           <div className="chat-widget__auth-heading">
             <div>
@@ -760,8 +783,8 @@ export function ChatWidget({
               <button
                 type="button"
                 onClick={() => {
-                  if (user && sessionId) {
-                    void processCompletedIntake(intakeDraft, sessionId, user)
+                  if (activeUser && sessionId) {
+                    void processCompletedIntake(intakeDraft, sessionId, activeUser)
                   }
                 }}
               >
@@ -780,12 +803,14 @@ export function ChatWidget({
                 <strong>Health information notice</strong>
                 <p>{healthInformationNotice}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => speechOutput.speak(healthInformationNotice)}
-              >
-                Hear notice
-              </button>
+              {voiceEnabled && (
+                <button
+                  type="button"
+                  onClick={() => speechOutput.speak(healthInformationNotice)}
+                >
+                  Hear notice
+                </button>
+              )}
               <label>
                 <input
                   type="checkbox"
@@ -821,17 +846,19 @@ export function ChatWidget({
             </div>
           </div>
         )}
-        <button
-          className={voiceInput.enabled ? 'chat-widget__voice is-listening' : 'chat-widget__voice'}
-          type="button"
-          onClick={toggleVoiceInput}
-          disabled={!voiceInput.supported || isLoading || isProcessingIntake}
-          aria-label={voiceInput.enabled ? 'Stop voice input' : 'Start voice input'}
-          aria-pressed={voiceInput.enabled}
-          title={voiceInput.supported ? 'Dictate your answer' : 'Voice input requires Chrome or Edge'}
-        >
-          {voiceInput.enabled ? <LucideMicOff /> : <LucideMic />}
-        </button>
+        {voiceEnabled && (
+          <button
+            className={voiceInput.enabled ? 'chat-widget__voice is-listening' : 'chat-widget__voice'}
+            type="button"
+            onClick={toggleVoiceInput}
+            disabled={!voiceInput.supported || isLoading || isProcessingIntake}
+            aria-label={voiceInput.enabled ? 'Stop voice input' : 'Start voice input'}
+            aria-pressed={voiceInput.enabled}
+            title={voiceInput.supported ? 'Dictate your answer' : 'Voice input requires Chrome or Edge'}
+          >
+            {voiceInput.enabled ? <LucideMicOff /> : <LucideMic />}
+          </button>
+        )}
         <textarea
           ref={textareaRef}
           value={input}
@@ -843,7 +870,11 @@ export function ChatWidget({
           onClick={useManualInput}
           onFocus={useManualInput}
           onKeyDown={handleKeyDown}
-          placeholder={voiceInput.listening ? 'Listening — pause to send…' : 'Type or dictate your answer…'}
+          placeholder={
+            voiceEnabled && voiceInput.listening
+              ? 'Listening — pause to send…'
+              : 'Type your answer…'
+          }
           disabled={isLoading || isProcessingIntake}
           rows={1}
         />
@@ -852,7 +883,8 @@ export function ChatWidget({
           type="submit"
           disabled={!isManualInput || !input.trim() || isLoading || isProcessingIntake}
         >
-          Send
+          <span>Send</span>
+          <ArrowUp aria-hidden="true" />
         </button>
       </form>
     </section>

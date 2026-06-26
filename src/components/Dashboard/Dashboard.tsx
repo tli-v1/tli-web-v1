@@ -230,7 +230,7 @@ function Dashboard() {
 
   if (!sessionUser) {
     return (
-      <main className="dashboard">
+      <main className="dashboard dashboard--auth">
         <section className="card dashboard-card auth-gate">
           <div className="dashboard-head">
             <div>
@@ -238,7 +238,7 @@ function Dashboard() {
               <h1>{authMode === 'signup' ? 'Create Account' : 'Sign In'}</h1>
               <p className="auth-gate__subtitle">
                 {authMode === 'signup'
-                  ? 'Create a secure account to manage your intake and case documents.'
+                  ? 'Create a secure account to manage your case.'
                   : 'Access your intake, case updates, and documents securely.'}
               </p>
             </div>
