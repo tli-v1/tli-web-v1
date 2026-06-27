@@ -326,15 +326,23 @@ select:-webkit-autofill:focus {
 
 button,
 .btn {
-  border: none;
-  background-color: var(--navy-800);
-  color: #f8fbff;
-  padding: 0.95rem 1.5rem;
-  border-radius: 12px;
+  border: 1px solid rgba(226, 232, 240, 0.58);
+  background: linear-gradient(180deg, rgba(13, 29, 63, 0.92), rgba(7, 18, 43, 0.96));
+  color: rgba(248, 251, 255, 0.94);
+  padding: 0.75rem 1.35rem;
+  border-radius: 999px;
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  transition: background-color 150ms, transform 150ms, box-shadow 150ms;
+  box-shadow:
+    0 12px 24px rgba(2, 8, 28, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    filter 150ms ease,
+    transform 150ms ease;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
@@ -342,19 +350,25 @@ button,
 }
 
 
-.secondary {
-  background-color: rgba(21, 39, 73, 0.1);
-  color: var(--navy-800);
-}
-
-.secondary:hover {
-  background-color: rgba(21, 39, 73, 0.2);
+.secondary,
+.accent {
+  border-color: rgba(226, 232, 240, 0.58);
+  background: linear-gradient(180deg, rgba(13, 29, 63, 0.92), rgba(7, 18, 43, 0.96));
+  color: rgba(248, 251, 255, 0.94);
 }
 
 button:hover,
 .btn:hover {
-  background-color: var(--navy-900);
-  box-shadow: 0 10px 25px rgba(15, 28, 58, 0.25);
+  border-color: rgba(255, 255, 255, 0.82);
+  background: linear-gradient(180deg, rgba(13, 29, 63, 0.92), rgba(7, 18, 43, 0.96));
+  color: #fff;
+  box-shadow:
+    0 14px 28px rgba(2, 8, 28, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.12);
+  filter: brightness(1.08);
+  transform: translateY(-1px);
 }
 
 button:disabled,
@@ -368,17 +382,8 @@ button:active,
   transform: translateY(1px);
 }
 
-.accent {
-  background-color: var(--accent);
-  color: var(--navy-900);
-}
-
-.accent:hover {
-  background-color: #e5a500;
-}
-
 .accent:disabled {
-  background-color: #f6b400;
+  background: linear-gradient(180deg, rgba(13, 29, 63, 0.92), rgba(7, 18, 43, 0.96));
 }
 
 .success {

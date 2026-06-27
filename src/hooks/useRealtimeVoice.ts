@@ -140,7 +140,7 @@ export function useRealtimeVoice() {
       userTurnCountRef.current >= MAX_USER_TURNS
       || totalUserCharactersRef.current + content.length > MAX_TOTAL_USER_CHARACTERS
     ) {
-      lockUserInput('This intake reached its input limit. Minerva can still finish responding.')
+      lockUserInput('This intake reached its input limit. Our agent can still finish responding.')
       return false
     }
 
@@ -153,12 +153,12 @@ export function useRealtimeVoice() {
 
     if (turnsRemaining === 0 || charactersRemaining === 0) {
       pendingInputLockRef.current =
-        'This intake reached its input limit. Minerva can still finish responding.'
+        'This intake reached its input limit. Our agent can still finish responding.'
       streamRef.current?.getAudioTracks().forEach((track) => {
         track.enabled = false
       })
       setIsMicrophoneMuted(true)
-      setLimitWarning('Final response received. Minerva will finish before input closes.')
+      setLimitWarning('Final response received. Our agent will finish before input closes.')
     } else if (
       userTurnCountRef.current >= WARNING_USER_TURNS
       || totalUserCharactersRef.current >= WARNING_TOTAL_USER_CHARACTERS
@@ -319,7 +319,7 @@ export function useRealtimeVoice() {
 
     if (event.type === 'error') {
       console.warn('Realtime API request error:', event.error?.message || event)
-      setError('Minerva had trouble processing that. Please try again.')
+      setError('Our agent had trouble processing that. Please try again.')
       respondingRef.current = false
       setIsResponding(false)
     }
@@ -404,14 +404,14 @@ export function useRealtimeVoice() {
         }, WARNING_SESSION_MS)
         sessionTimerRef.current = window.setTimeout(() => {
           const message =
-            'This intake reached its input-time limit. Minerva can still finish responding.'
+            'This intake reached its input-time limit. Our agent can still finish responding.'
           stream.getAudioTracks().forEach((track) => {
             track.enabled = false
           })
           setIsMicrophoneMuted(true)
           if (respondingRef.current) {
             pendingInputLockRef.current = message
-            setLimitWarning('Input time ended. Minerva will finish the current response.')
+            setLimitWarning('Input time ended. Our agent will finish the current response.')
           } else {
             lockUserInput(message)
           }

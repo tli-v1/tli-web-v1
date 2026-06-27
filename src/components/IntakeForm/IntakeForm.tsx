@@ -1022,6 +1022,11 @@ function IntakeForm() {
                   setAuthError('')
                   setAuthMessage('')
                 }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter') return
+                  event.preventDefault()
+                  void handleAuthAction()
+                }}
                 placeholder="At least 6 characters"
                 minLength={6}
               />

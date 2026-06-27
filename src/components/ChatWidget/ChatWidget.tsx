@@ -81,7 +81,7 @@ interface AttachedFile {
 
 const welcomeMessageId = 'minerva-welcome'
 const defaultInitialMessage =
-  "Hi, I'm Minerva. Tell me what happened, and I can guide you through a conversational intake."
+  "Hi, I'm your intake agent. Tell me what happened, and I can guide you through a conversational intake."
 const healthInformationNotice =
   'Health information notice: Documents may contain medical or other sensitive personal information. By uploading, you authorize True Legal Innovations to securely store the files and share them with participating attorneys solely for intake review and attorney matching. Upload only information you are comfortable sharing. This consent notice does not itself establish HIPAA coverage or replace any formal HIPAA authorization that may be required.'
 
@@ -559,7 +559,7 @@ export function ChatWidget({
   if (!isOpen && variant === 'floating') {
     return (
       <button className="chat-launcher" type="button" onClick={() => setIsOpen(true)}>
-        Ask Minerva
+        Ask our agent
       </button>
     )
   }
@@ -611,7 +611,7 @@ export function ChatWidget({
             <button
               type="button"
               onClick={speechOutput.toggleMuted}
-              aria-label={speechOutput.muted ? 'Unmute Minerva' : 'Mute Minerva'}
+              aria-label={speechOutput.muted ? 'Unmute our agent' : 'Mute our agent'}
               aria-pressed={speechOutput.muted}
               title={speechOutput.muted ? 'Turn voice responses on' : 'Turn voice responses off'}
             >

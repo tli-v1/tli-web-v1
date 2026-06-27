@@ -49,7 +49,7 @@
 .logo-text {
   font-weight: 800;
   font-size: 1.1rem;
-  color: var(--navy-900);
+  color: inherit;
 }
 
 .menu-toggle {
@@ -204,6 +204,10 @@
 
   .logo {
     min-width: 0;
+    min-height: 44px;
+    align-items: center;
+    gap: 0.45rem;
+    line-height: 1;
   }
 
   .logo-img {
@@ -211,9 +215,10 @@
   }
 
   .logo-text {
-    max-width: 13rem;
+    max-width: min(13rem, calc(100vw - 7.75rem));
     overflow: hidden;
     font-size: 0.78rem;
+    letter-spacing: 0.1em;
     line-height: 1.15;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -230,6 +235,13 @@
     border: 1px solid rgba(26, 47, 95, 0.12);
     background: rgba(7, 18, 43, 0.38) !important;
     backdrop-filter: blur(10px);
+  }
+
+  .menu-toggle:hover,
+  .menu-toggle:active,
+  .menu-toggle:focus {
+    filter: none;
+    transform: none;
   }
 
   .menu-line {
@@ -274,5 +286,11 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+  }
+}
+
+@media (max-width: 950px) and (max-height: 600px) and (orientation: landscape) {
+  .navbar {
+    top: 0.75rem;
   }
 }

@@ -70,7 +70,10 @@
   color: #fff;
 }
 
-.chat-widget__header h2,
+.chat-widget__header h2 {
+  margin: 0;
+  color: #fff;
+}
 .chat-widget__header p {
   margin: 0;
 }

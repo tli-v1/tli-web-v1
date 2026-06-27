@@ -3,41 +3,17 @@ import { Check, MessageSquareText, Mic, X } from 'lucide-react'
 import RealtimeVoiceIntake from '../RealtimeVoiceIntake'
 import { ChatWidget } from '../ChatWidget/ChatWidget'
 import Footer from '../Footer'
+import HowItWorks from '../HowItWorks'
 import { getSession, onAuthStateChange } from '../../api/auth'
 import type { User } from '../../types'
 import './Landing.css'
 
 function Landing() {
-  const marketplaceRef = useRef<HTMLElement | null>(null)
   const launchTimerRef = useRef<number | null>(null)
-  const [isMarketplaceVisible, setIsMarketplaceVisible] = useState(false)
   const [isIntakeOpen, setIsIntakeOpen] = useState(false)
   const [isIntakeLaunching, setIsIntakeLaunching] = useState(false)
   const [intakeMode, setIntakeMode] = useState<'text' | 'voice'>('voice')
   const [sessionUser, setSessionUser] = useState<User | null>(null)
-
-  useEffect(() => {
-    const section = marketplaceRef.current
-
-    if (!section || !('IntersectionObserver' in window)) {
-      setIsMarketplaceVisible(true)
-      return
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsMarketplaceVisible(true)
-          observer.disconnect()
-        }
-      },
-      { threshold: 0.22 },
-    )
-
-    observer.observe(section)
-
-    return () => observer.disconnect()
-  }, [])
 
   useEffect(() => {
     return () => {
@@ -143,6 +119,8 @@ function Landing() {
         </div>
       </section>
 
+      <HowItWorks />
+
       {isIntakeOpen && (
         <div className="hero-chat-overlay" role="dialog" aria-modal="true" aria-label="Conversational intake">
           <button
@@ -219,7 +197,7 @@ function TextIntakeModal({ user, onClose }: TextIntakeModalProps) {
               <Check />
             </div>
             <h2>All Set!</h2>
-            <p>Minerva is ready to chat.</p>
+            <p>Our agent is ready to chat.</p>
           </div>
         ) : (
           <div className="realtime-intake__loading-content">
@@ -227,7 +205,7 @@ function TextIntakeModal({ user, onClose }: TextIntakeModalProps) {
               <MessageSquareText />
             </div>
             <h2>Getting things ready for you!</h2>
-            <p>Minerva will be with you in just a moment</p>
+            <p>Our agent will be with you in just a moment</p>
             <span className="realtime-intake__loading-dots" aria-hidden="true">
               <i />
               <i />

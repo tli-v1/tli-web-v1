@@ -1,4 +1,3 @@
-import { Apple } from 'lucide-react'
 import './SocialAuthButtons.css'
 
 export type SocialAuthProvider = 'google' | 'apple'
@@ -50,15 +49,6 @@ export default function SocialAuthButtons({
         >
           <GoogleMark />
           <span>{loadingProvider === 'google' ? 'Connecting…' : 'Continue with Google'}</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onSelect('apple')}
-          disabled={isDisabled}
-          aria-label="Continue with Apple"
-        >
-          <Apple aria-hidden="true" />
-          <span>{loadingProvider === 'apple' ? 'Connecting…' : 'Continue with Apple'}</span>
         </button>
       </div>
       <div className="social-auth__divider"><span>or use email</span></div>

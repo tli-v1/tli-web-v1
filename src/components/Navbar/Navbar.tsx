@@ -13,7 +13,7 @@ function Navbar() {
       <div className="nav-left">
         <Link to="/" className="logo" onClick={closeNav}>
           <img src={Logo} alt="True Legal Innovations logo" className="logo-img" />
-            TRUE <span>LEGAL</span> INNOVATIONS
+          <span className="logo-text">TRUE LEGAL INNOVATIONS</span>
         </Link>
 
         <button

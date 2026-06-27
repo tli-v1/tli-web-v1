@@ -271,7 +271,7 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
               <Check />
             </div>
             <h2>All Set!</h2>
-            <p>Minerva is ready to start.</p>
+            <p>Our agent is ready to start.</p>
           </div>
         ) : (
           <div className="realtime-intake__loading-content">
@@ -279,7 +279,7 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
               <Mic />
             </div>
             <h2>Getting things ready for you!</h2>
-            <p>Minerva will be with you in just a moment</p>
+            <p>Our agent will be with you in just a moment</p>
             <span className="realtime-intake__loading-dots" aria-hidden="true">
               <i />
               <i />
@@ -496,7 +496,7 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
             maxLength={800}
             placeholder={
               realtime.isResponding
-                ? 'Minerva is responding…'
+                ? 'Our agent is responding…'
                 : realtime.status === 'connected' ? 'Type a message…' : 'Connecting…'
             }
             disabled={
@@ -504,7 +504,7 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
               || realtime.isResponding
               || Boolean(realtime.limitReason)
             }
-            aria-label="Message Minerva"
+            aria-label="Message our agent"
           />
 
           <button

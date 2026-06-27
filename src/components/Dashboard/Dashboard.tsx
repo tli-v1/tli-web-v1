@@ -231,7 +231,13 @@ function Dashboard() {
   if (!sessionUser) {
     return (
       <main className="dashboard dashboard--auth">
-        <section className="card dashboard-card auth-gate">
+        <form
+          className="card dashboard-card auth-gate"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void handleAuthAction()
+          }}
+        >
           <div className="dashboard-head">
             <div>
               <p className="eyebrow">Secure dashboard</p>
@@ -313,22 +319,13 @@ function Dashboard() {
             </button>
           </div>
 
-          <button type="button" className="btn accent" onClick={handleAuthAction} disabled={authLoading}>
+          <button type="submit" className="btn accent" disabled={authLoading}>
             {authLoading ? 'Saving...' : authMode === 'signup' ? 'Create account' : 'Log in'}
           </button>
 
           {authError && <p className="error">{authError}</p>}
           {authMessage && !authError && <p className="notice">{authMessage}</p>}
-
-          <div className="auth-footer">
-            <p className="helper-text">
-              Prefer the guided intake? You can also authenticate in the contact step of the intake form.
-            </p>
-            <Link to="/base/intake" className="btn secondary">
-              Go to intake flow
-            </Link>
-          </div>
-        </section>
+        </form>
       </main>
     )
   }

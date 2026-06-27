@@ -3,7 +3,13 @@
   width: 100%;
   display: flex;
   align-items: flex-start;
+  margin-top: 0 !important;
+  padding-top: clamp(6rem, 8vw, 7.5rem);
   padding-bottom: 2rem;
+  background:
+    radial-gradient(ellipse 72% 44% at 50% 34%, rgba(86, 119, 190, 0.34), transparent 62%),
+    radial-gradient(ellipse 74% 54% at 50% 76%, rgba(8, 18, 43, 0.62), transparent 74%),
+    linear-gradient(135deg, #244887 0%, #1b356c 42%, #081734 100%);
 }
 
 .dashboard--auth {
@@ -196,32 +202,8 @@
   min-height: 48px;
 }
 
-.auth-footer {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding-top: 0.25rem;
-  text-align: center;
-}
-
-.auth-footer .helper-text,
 .auth-gate .helper-text {
   color: #cbd5e1;
-}
-
-.auth-footer .btn {
-  align-self: center;
-}
-
-.auth-footer .btn.secondary {
-  border-color: rgba(148, 163, 184, 0.35);
-  background: rgba(15, 23, 42, 0.58);
-  color: #e2e8f0;
-}
-
-.auth-footer .btn.secondary:hover {
-  background: rgba(30, 41, 59, 0.8);
-  color: #fff;
 }
 
 .dashboard-head {
@@ -350,8 +332,7 @@
     padding-inline: 0.7rem;
   }
 
-  .auth-gate .btn.accent,
-  .auth-footer .btn {
+  .auth-gate .btn.accent {
     width: 100%;
   }
 }
