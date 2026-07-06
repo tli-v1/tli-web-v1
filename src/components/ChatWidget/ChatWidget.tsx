@@ -6,6 +6,7 @@ import {
   type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
+  type WheelEvent,
 } from 'react'
 import {
   ArrowUp,
@@ -39,23 +40,31 @@ import {
   signUp,
 } from '../../api/auth'
 import {
-  addConversationalIntakeFile,
-  ensureConversationalIntakeSession,
+  getPasswordPolicyError,
+  PASSWORD_MIN_LENGTH,
+} from '../../utils/passwordPolicy'
+import {
+  createAuthenticatedConversationalIntakeSession,
   minervaModel,
   saveConversationalIntakeExchange,
   type ConversationalIntakeMessage,
   updateConversationalIntakeProcessing,
 } from '../../agent/initialize'
 import { processIntakeIntoCase } from '../../agent/processIntake'
-import type { StructuredIntake } from '../../agent/processIntake'
 import { isCaseIntakeRelevant, offTopicMessage } from '../../agent/relevance'
 import { useSpeechOutput } from '../../hooks/useSpeechOutput'
 import { useVoiceInput } from '../../hooks/useVoiceInput'
-import { uploadConversationalIntakeFile } from '../../storage/fileUpload'
+import { healthInformationNotice } from '../../intake/healthInformationNotice'
+import {
+  ACCEPTED_CASE_FILE_TYPES,
+  validateCaseFiles,
+} from '../../storage/fileValidation'
+import { removeFiles, uploadFile } from '../../storage/fileUpload'
 import type { User } from '../../types'
 import SocialAuthButtons, {
   type SocialAuthProvider,
 } from '../SocialAuthButtons/SocialAuthButtons'
+import PasswordRequirements from '../PasswordRequirements/PasswordRequirements'
 import './ChatWidget.css'
 
 interface Message {
@@ -82,8 +91,6 @@ interface AttachedFile {
 const welcomeMessageId = 'minerva-welcome'
 const defaultInitialMessage =
   "Hi, I'm your intake agent. Tell me what happened, and I can guide you through a conversational intake."
-const healthInformationNotice =
-  'Health information notice: Documents may contain medical or other sensitive personal information. By uploading, you authorize True Legal Innovations to securely store the files and share them with participating attorneys solely for intake review and attorney matching. Upload only information you are comfortable sharing. This consent notice does not itself establish HIPAA coverage or replace any formal HIPAA authorization that may be required.'
 
 export function ChatWidget({
   user,
@@ -94,7 +101,9 @@ export function ChatWidget({
   onClose,
 }: ChatWidgetProps) {
   const startsInIntake = intakeMode
-  const [authenticatedUser, setAuthenticatedUser] = useState<User | null>(user)
+  const [authenticatedUser, setAuthenticatedUser] = useState<User | null>(
+    startsInIntake ? null : user,
+  )
   const activeUser = authenticatedUser
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -112,7 +121,7 @@ export function ChatWidget({
   const [isUploadingFiles, setIsUploadingFiles] = useState(false)
   const [isProcessingIntake, setIsProcessingIntake] = useState(false)
   const [awaitingProcessingSignIn, setAwaitingProcessingSignIn] = useState(false)
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin')
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signup')
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
@@ -120,31 +129,56 @@ export function ChatWidget({
   const [authError, setAuthError] = useState('')
   const [healthNoticeAccepted, setHealthNoticeAccepted] = useState(false)
   const [processedCaseId, setProcessedCaseId] = useState('')
-  const [processedIntake, setProcessedIntake] = useState<StructuredIntake | null>(null)
   const [processingError, setProcessingError] = useState('')
+  const [attachmentError, setAttachmentError] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+
+  useEffect(() => {
+    if (!awaitingProcessingSignIn || activeUser) return
+    setAuthMode('signup')
+    setAuthError('')
+  }, [activeUser, awaitingProcessingSignIn])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [intakeDraft, setIntakeDraft] = useState<ChatIntakeDraft>(emptyChatIntakeDraft)
   const [intakeStep, setIntakeStep] = useState<ChatIntakeStep | null>(
     startsInIntake ? 'whatHappened' : null,
   )
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const inputRef = useRef('')
   const manualInputRef = useRef(false)
   const autoSubmitTimerRef = useRef<number | null>(null)
+  const processingInFlightRef = useRef(false)
   const sendMessageRef = useRef<(content?: string) => void>(() => undefined)
   const speakRef = useRef<(content: string) => void>(() => undefined)
   const resumeListeningRef = useRef(false)
 
   useEffect(() => {
-    setAuthenticatedUser(user)
-  }, [user])
+    if (!startsInIntake) setAuthenticatedUser(user)
+  }, [startsInIntake, user])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const messagesElement = messagesRef.current
+    if (!messagesElement) return
+    messagesElement.scrollTo({
+      top: messagesElement.scrollHeight,
+      behavior: 'smooth',
+    })
   }, [messages])
+
+  const containMessageScroll = (event: WheelEvent<HTMLDivElement>) => {
+    const element = event.currentTarget
+    const atTop = element.scrollTop <= 0
+    const atBottom =
+      Math.ceil(element.scrollTop + element.clientHeight) >= element.scrollHeight
+
+    event.stopPropagation()
+    if ((event.deltaY < 0 && atTop) || (event.deltaY > 0 && atBottom)) {
+      event.preventDefault()
+    }
+  }
 
   useEffect(() => {
     const textarea = textareaRef.current
@@ -249,46 +283,89 @@ export function ChatWidget({
     completedSessionId: string,
     processingUser: User,
   ) => {
+    if (processingInFlightRef.current) return
+    processingInFlightRef.current = true
     setIsProcessingIntake(true)
     setProcessingError('')
     setProcessedCaseId('')
-    setProcessedIntake(null)
     setAwaitingProcessingSignIn(false)
-    await updateConversationalIntakeProcessing(completedSessionId, {
-      status: 'processing',
-    })
+    let processingSessionIdForStatus: string | null = null
 
     try {
+      const processingSessionId = await createAuthenticatedConversationalIntakeSession(
+        completedSessionId,
+      )
+      processingSessionIdForStatus = processingSessionId
+      setSessionId(processingSessionId)
+      await updateConversationalIntakeProcessing(processingSessionId, {
+        status: 'processing',
+      })
       const processed = await processIntakeIntoCase({
         draft: completedDraft,
         files: attachedFiles,
+        prepareFiles: async (caseId) => {
+          if (pendingFiles.length === 0) return []
+
+          setIsUploadingFiles(true)
+          const uploadedPaths: string[] = []
+          const uploadedFiles: AttachedFile[] = []
+          try {
+            for (const file of pendingFiles) {
+              const upload = await uploadFile({
+                bucket: 'case-docs',
+                file,
+                userId: processingUser.id,
+                caseId,
+              })
+              if (upload.error || !upload.path) {
+                throw new Error(upload.error || `Unable to upload ${file.name}.`)
+              }
+
+              uploadedPaths.push(upload.path)
+              uploadedFiles.push({
+                name: file.name,
+                storagePath: `case-docs/${upload.path}`,
+              })
+            }
+            setAttachedFiles((current) => [...current, ...uploadedFiles])
+            setPendingFiles([])
+            return uploadedFiles
+          } catch (error) {
+            if (uploadedPaths.length > 0) {
+              await removeFiles('case-docs', uploadedPaths).catch(() => undefined)
+            }
+            throw error
+          }
+        },
         user: processingUser,
       })
-      await updateConversationalIntakeProcessing(completedSessionId, {
+      await updateConversationalIntakeProcessing(processingSessionId, {
         status: 'processed',
         structuredData: processed.structured,
         caseId: processed.caseId,
       })
       setProcessedCaseId(processed.caseId)
-      setProcessedIntake(processed.structured)
       appendAssistantMessage(
-        `Your intake has been processed and added to your dashboard. Case ID: ${processed.caseId}`,
         'Your intake has been processed and added to your dashboard.',
       )
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to process this intake.'
       setProcessingError(message)
-      await updateConversationalIntakeProcessing(completedSessionId, {
-        status: 'failed',
-        error: message,
-      }).catch(() => undefined)
+      if (processingSessionIdForStatus) {
+        await updateConversationalIntakeProcessing(processingSessionIdForStatus, {
+          status: 'failed',
+          error: message,
+        }).catch(() => undefined)
+      }
       appendAssistantMessage(
         `Your conversation is saved, but I could not finish creating the dashboard case: ${message}`,
       )
     } finally {
+      processingInFlightRef.current = false
+      setIsUploadingFiles(false)
       setIsProcessingIntake(false)
     }
-  }, [appendAssistantMessage, attachedFiles])
+  }, [appendAssistantMessage, attachedFiles, pendingFiles])
 
   useEffect(() => {
     if (
@@ -314,39 +391,24 @@ export function ChatWidget({
     event.target.value = ''
     if (!files.length) return
 
-    if (!activeUser) {
-      appendAssistantMessage('Please sign in before attaching files so we can store them securely with your intake.')
-      return
-    }
+    const existing = new Set(pendingFiles.map(
+      (file) => `${file.name}:${file.size}:${file.lastModified}`,
+    ))
+    const nextFiles = [
+      ...pendingFiles,
+      ...files.filter(
+        (file) => !existing.has(`${file.name}:${file.size}:${file.lastModified}`),
+      ),
+    ]
 
-    setIsUploadingFiles(true)
     try {
-      const activeSessionId = await ensureConversationalIntakeSession(sessionId, activeUser.id)
-      setSessionId(activeSessionId)
-
-      for (const file of files) {
-        const upload = await uploadConversationalIntakeFile({
-          file,
-          userId: activeUser.id,
-          intakeId: activeSessionId,
-        })
-        if (upload.error || !upload.path) {
-          throw new Error(upload.error || `Unable to upload ${file.name}.`)
-        }
-
-        const storagePath = `conversational-intakes/${upload.path}`
-        await addConversationalIntakeFile(activeSessionId, {
-          name: file.name,
-          contentType: file.type || 'application/octet-stream',
-          size: file.size,
-          storagePath,
-        })
-        setAttachedFiles((current) => [...current, { name: file.name, storagePath }])
-      }
+      await validateCaseFiles(nextFiles)
+      setAttachmentError('')
+      setPendingFiles(nextFiles)
     } catch (error) {
-      appendAssistantMessage(error instanceof Error ? error.message : 'Unable to attach that file.')
-    } finally {
-      setIsUploadingFiles(false)
+      setAttachmentError(
+        error instanceof Error ? error.message : 'One or more attachments are not allowed.',
+      )
     }
   }
 
@@ -358,8 +420,14 @@ export function ChatWidget({
       setAuthError('Enter your email address.')
       return
     }
-    if (authPassword.length < 6) {
-      setAuthError('Password must be at least 6 characters.')
+    const passwordError =
+      authMode === 'signup'
+        ? getPasswordPolicyError(authPassword)
+        : authPassword.length < 6
+          ? 'Enter your password.'
+          : null
+    if (passwordError) {
+      setAuthError(passwordError)
       return
     }
 
@@ -432,7 +500,7 @@ export function ChatWidget({
       userMessage.content,
       {
         userEmail: activeUser?.email,
-        attachedFileCount: attachedFiles.length,
+        attachedFileCount: attachedFiles.length + pendingFiles.length,
       },
     )
 
@@ -566,6 +634,18 @@ export function ChatWidget({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    const selectedFileCount = pendingFiles.length + attachedFiles.length
+    if (
+      intakeStep === 'documents'
+      && healthNoticeAccepted
+      && selectedFileCount > 0
+      && !inputRef.current.trim()
+    ) {
+      void sendMessage(
+        `${selectedFileCount} file${selectedFileCount === 1 ? '' : 's'} selected for submission.`,
+      )
+      return
+    }
     if (!manualInputRef.current) return
     void sendMessage(inputRef.current)
   }
@@ -633,7 +713,12 @@ export function ChatWidget({
         </div>
       </header>
 
-      <div className="chat-widget__messages" aria-live="polite">
+      <div
+        ref={messagesRef}
+        className="chat-widget__messages"
+        aria-live="polite"
+        onWheel={containMessageScroll}
+      >
         {messages.map((message) => (
           <article
             key={message.id}
@@ -651,38 +736,31 @@ export function ChatWidget({
           </article>
         ))}
         {isLoading && <div className="chat-widget__typing">Thinking…</div>}
-        <div ref={messagesEndRef} />
       </div>
 
       {awaitingProcessingSignIn && !activeUser && (
         <form className="chat-widget__auth" onSubmit={handleInlineAuth}>
-          <div className="chat-widget__auth-heading">
-            <div>
-              <h3>{authMode === 'signup' ? 'Create your account' : 'Sign in to finish'}</h3>
-              <p>Your saved conversation will be processed into a dashboard case after sign-in.</p>
-            </div>
-            <div className="chat-widget__auth-toggle">
-              <button
-                type="button"
-                className={authMode === 'signin' ? 'is-active' : ''}
-                onClick={() => {
-                  setAuthMode('signin')
-                  setAuthError('')
-                }}
-              >
-                Sign in
-              </button>
-              <button
-                type="button"
-                className={authMode === 'signup' ? 'is-active' : ''}
-                onClick={() => {
-                  setAuthMode('signup')
-                  setAuthError('')
-                }}
-              >
-                Create account
-              </button>
-            </div>
+          <div className="chat-widget__auth-toggle">
+            <button
+              type="button"
+              className={authMode === 'signup' ? 'is-active' : ''}
+              onClick={() => {
+                setAuthMode('signup')
+                setAuthError('')
+              }}
+            >
+              Create account
+            </button>
+            <button
+              type="button"
+              className={authMode === 'signin' ? 'is-active' : ''}
+              onClick={() => {
+                setAuthMode('signin')
+                setAuthError('')
+              }}
+            >
+              Sign in
+            </button>
           </div>
           <SocialAuthButtons
             disabled={authLoading}
@@ -701,18 +779,21 @@ export function ChatWidget({
                 required
               />
             </label>
-            <label>
-              <span>Password</span>
-              <input
-                type="password"
-                value={authPassword}
-                onChange={(event) => setAuthPassword(event.target.value)}
-                autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
-                disabled={authLoading}
-                minLength={6}
-                required
-              />
-            </label>
+            <div className="password-field-with-requirements">
+              <label>
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={authPassword}
+                  onChange={(event) => setAuthPassword(event.target.value)}
+                  autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
+                  disabled={authLoading}
+                  minLength={authMode === 'signup' ? PASSWORD_MIN_LENGTH : 6}
+                  required
+                />
+              </label>
+              {authMode === 'signup' && <PasswordRequirements password={authPassword} />}
+            </div>
             <button className="chat-widget__auth-submit" type="submit" disabled={authLoading}>
               {authLoading
                 ? 'Please wait…'
@@ -743,37 +824,13 @@ export function ChatWidget({
             </div>
           )}
 
-          {!isProcessingIntake && processedCaseId && processedIntake && (
-            <div className="case-ready-card">
-              <div className="case-ready-card__top">
-                <div>
-                  <p className="processing-card__eyebrow">Case ready</p>
-                  <h3>{processedIntake.city || 'Submitted incident'}{processedIntake.stateCode ? `, ${processedIntake.stateCode}` : ''}</h3>
-                </div>
-                <span className="case-ready-card__status">Pending review</span>
-              </div>
-              <p className="case-ready-card__description">{processedIntake.description}</p>
-              <div className="case-ready-card__facts">
-                <div>
-                  <span>Incident date</span>
-                  <strong>{processedIntake.incidentDate}</strong>
-                </div>
-                <div>
-                  <span>Documents</span>
-                  <strong>{attachedFiles.length}</strong>
-                </div>
-                <div>
-                  <span>Case ID</span>
-                  <strong>{processedCaseId.slice(0, 8)}…</strong>
-                </div>
-              </div>
-              <Link
-                className="case-ready-card__button"
-                to={`/dashboard/cases/${processedCaseId}`}
-              >
-                Open your case
-              </Link>
-            </div>
+          {!isProcessingIntake && processedCaseId && (
+            <Link
+              className="case-ready-card__button"
+              to={`/dashboard/cases/${processedCaseId}`}
+            >
+              Go to your case
+            </Link>
           )}
 
           {!isProcessingIntake && processingError && (
@@ -795,6 +852,7 @@ export function ChatWidget({
         </section>
       )}
 
+      {(!startsInIntake || getNextIntakeStep(intakeDraft) !== null) && (
       <form className="chat-widget__composer" onSubmit={handleSubmit}>
         {intakeStep === 'documents' && (
           <div className="chat-widget__document-step">
@@ -825,7 +883,7 @@ export function ChatWidget({
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept=".pdf,.jpg,.jpeg,.png,.heic,.doc,.docx,.txt"
+                accept={ACCEPTED_CASE_FILE_TYPES}
                 onChange={handleAttachFiles}
                 hidden
               />
@@ -838,12 +896,15 @@ export function ChatWidget({
                 <Paperclip aria-hidden="true" />
                 {isUploadingFiles ? 'Uploading…' : 'Add file'}
               </button>
-              {attachedFiles.length > 0 && (
+              {(pendingFiles.length > 0 || attachedFiles.length > 0) && (
                 <span>
-                  {attachedFiles.length} file{attachedFiles.length === 1 ? '' : 's'} attached
+                  {pendingFiles.length > 0
+                    ? `${pendingFiles.length} file${pendingFiles.length === 1 ? '' : 's'} selected · submitted after sign-in`
+                    : `${attachedFiles.length} file${attachedFiles.length === 1 ? '' : 's'} attached`}
                 </span>
               )}
             </div>
+            {attachmentError && <p className="chat-widget__attachment-error">{attachmentError}</p>}
           </div>
         )}
         {voiceEnabled && (
@@ -871,7 +932,9 @@ export function ChatWidget({
           onFocus={useManualInput}
           onKeyDown={handleKeyDown}
           placeholder={
-            voiceEnabled && voiceInput.listening
+            intakeStep === 'documents'
+              ? 'Optional note about your files…'
+              : voiceEnabled && voiceInput.listening
               ? 'Listening — pause to send…'
               : 'Type your answer…'
           }
@@ -881,12 +944,24 @@ export function ChatWidget({
         <button
           className="chat-widget__send"
           type="submit"
-          disabled={!isManualInput || !input.trim() || isLoading || isProcessingIntake}
+          disabled={
+            isLoading
+            || isProcessingIntake
+            || (
+              intakeStep === 'documents'
+                ? !input.trim() && (
+                    !healthNoticeAccepted
+                    || pendingFiles.length + attachedFiles.length === 0
+                  )
+                : !isManualInput || !input.trim()
+            )
+          }
         >
           <span>Send</span>
           <ArrowUp aria-hidden="true" />
         </button>
       </form>
+      )}
     </section>
   )
 }

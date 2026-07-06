@@ -34,6 +34,16 @@ export async function ensureRealtimeIntakeSession(
   const response = await persistIntake({
     action: 'ensure',
     sessionId,
+    deferOwnership: true,
+  })
+  return response.data.sessionId
+}
+
+export async function claimRealtimeIntakeSession(sessionId: string): Promise<string> {
+  const response = await persistIntake({
+    action: 'ensure',
+    sessionId: null,
+    sourceSessionId: sessionId,
   })
   return response.data.sessionId
 }
@@ -46,6 +56,7 @@ export async function persistRealtimeMessage(
     action: 'message',
     sessionId,
     message,
+    deferOwnership: true,
   })
   return response.data.sessionId
 }

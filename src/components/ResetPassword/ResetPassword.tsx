@@ -1,5 +1,10 @@
 import { useState } from 'react'
 import { updatePassword } from '../../api/auth'
+import {
+  getPasswordPolicyError,
+  PASSWORD_MIN_LENGTH,
+} from '../../utils/passwordPolicy'
+import PasswordRequirements from '../PasswordRequirements/PasswordRequirements'
 import './ResetPassword.css'
 
 function ResetPassword() {
@@ -12,8 +17,9 @@ function ResetPassword() {
   const handleReset = async () => {
     setError('')
     setMessage('')
-    if (!newPassword || newPassword.length < 6) {
-      setError('Password must be at least 6 characters.')
+    const passwordError = getPasswordPolicyError(newPassword)
+    if (passwordError) {
+      setError(passwordError)
       return
     }
     if (newPassword !== confirmPassword) {
@@ -45,15 +51,20 @@ function ResetPassword() {
           </div>
         </div>
 
-        <label className="field">
-          <span>New password</span>
-          <input
-            type="password"
-            value={newPassword}
-            onChange={(event) => setNewPassword(event.target.value)}
-            placeholder="At least 6 characters"
-          />
-        </label>
+        <div className="password-field-with-requirements">
+          <label className="field">
+            <span>New password</span>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              placeholder="Create a strong password"
+              minLength={PASSWORD_MIN_LENGTH}
+              autoComplete="new-password"
+            />
+          </label>
+          <PasswordRequirements password={newPassword} />
+        </div>
 
         <label className="field">
           <span>Confirm password</span>
@@ -62,6 +73,8 @@ function ResetPassword() {
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
             placeholder="Retype your password"
+            minLength={PASSWORD_MIN_LENGTH}
+            autoComplete="new-password"
           />
         </label>
 

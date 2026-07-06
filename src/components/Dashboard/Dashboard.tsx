@@ -11,19 +11,26 @@ import {
   signOut,
   signUp,
 } from '../../api/auth'
+import {
+  getPasswordPolicyError,
+  PASSWORD_MIN_LENGTH,
+} from '../../utils/passwordPolicy'
 import { getUserProfile } from '../../api/userProfile'
 import type { User, CaseSummary } from '../../types'
 import SocialAuthButtons, {
   type SocialAuthProvider,
 } from '../SocialAuthButtons/SocialAuthButtons'
+import PasswordRequirements from '../PasswordRequirements/PasswordRequirements'
 import './Dashboard.css'
+
+const CASES_PER_PAGE = 10
 
 function Dashboard() {
   const [sessionUser, setSessionUser] = useState<User | null>(null)
   const [checkingSession, setCheckingSession] = useState(true)
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState('')
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login')
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup')
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
@@ -33,6 +40,8 @@ function Dashboard() {
   const [cases, setCases] = useState<CaseSummary[]>([])
   const [casesLoading, setCasesLoading] = useState(false)
   const [casesError, setCasesError] = useState('')
+  const [casePage, setCasePage] = useState(1)
+  const [caseTotal, setCaseTotal] = useState(0)
   const [profileName, setProfileName] = useState('')
 
   const formatDate = (iso: string | null | undefined): string => {
@@ -93,19 +102,29 @@ function Dashboard() {
   useEffect(() => {
     if (!sessionUser) {
       setCases([])
+      setCasePage(1)
+      setCaseTotal(0)
       return
     }
     let cancel = false
     const loadCases = async () => {
       setCasesLoading(true)
       setCasesError('')
-      const { data, error } = await getUserCases(sessionUser.id)
+      const { data, error } = await getUserCases(sessionUser.id, casePage, CASES_PER_PAGE)
       if (cancel) return
       if (error) {
-        setCasesError('No cases found.')
+        setCasesError('Unable to load your submitted cases. Please refresh and try again.')
         setCases([])
+        setCaseTotal(0)
       } else {
-        setCases(data || [])
+        const pageCases = data?.cases || []
+        if (pageCases.length === 0 && casePage > 1) {
+          setCasePage((currentPage) => currentPage - 1)
+          setCasesLoading(false)
+          return
+        }
+        setCases(pageCases)
+        setCaseTotal(data?.total || 0)
       }
       setCasesLoading(false)
     }
@@ -113,7 +132,7 @@ function Dashboard() {
     return () => {
       cancel = true
     }
-  }, [sessionUser])
+  }, [casePage, sessionUser])
 
   if (checkingSession) {
     return (
@@ -131,8 +150,14 @@ function Dashboard() {
       setAuthError('Enter your email.')
       return
     }
-    if (authPassword.length < 6) {
-      setAuthError('Password must be at least 6 characters long.')
+    const passwordError =
+      authMode === 'signup'
+        ? getPasswordPolicyError(authPassword)
+        : authPassword.length < 6
+          ? 'Enter your password.'
+          : null
+    if (passwordError) {
+      setAuthError(passwordError)
       return
     }
 
@@ -228,6 +253,10 @@ function Dashboard() {
     setSigningOut(false)
   }
 
+  const pageCount = Math.max(1, Math.ceil(caseTotal / CASES_PER_PAGE))
+  const firstCaseNumber = caseTotal === 0 ? 0 : (casePage - 1) * CASES_PER_PAGE + 1
+  const lastCaseNumber = Math.min(casePage * CASES_PER_PAGE, caseTotal)
+
   if (!sessionUser) {
     return (
       <main className="dashboard dashboard--auth">
@@ -253,17 +282,6 @@ function Dashboard() {
           <div className="auth-toggle">
             <button
               type="button"
-              className={`chip ${authMode === 'login' ? 'chip--active' : ''}`}
-              onClick={() => {
-                setAuthMode('login')
-                setAuthError('')
-                setAuthMessage('')
-              }}
-            >
-              Log in
-            </button>
-            <button
-              type="button"
               className={`chip ${authMode === 'signup' ? 'chip--active' : ''}`}
               onClick={() => {
                 setAuthMode('signup')
@@ -272,6 +290,17 @@ function Dashboard() {
               }}
             >
               Create account
+            </button>
+            <button
+              type="button"
+              className={`chip ${authMode === 'login' ? 'chip--active' : ''}`}
+              onClick={() => {
+                setAuthMode('login')
+                setAuthError('')
+                setAuthMessage('')
+              }}
+            >
+              Log in
             </button>
           </div>
 
@@ -294,18 +323,23 @@ function Dashboard() {
             />
           </label>
 
-          <label className="field">
-            <span>Password</span>
-            <input
-              type="password"
-              value={authPassword}
-              onChange={(event) => {
-                setAuthPassword(event.target.value)
-                setAuthError('')
-              }}
-              placeholder="At least 6 characters"
-            />
-          </label>
+          <div className="password-field-with-requirements">
+            <label className="field">
+              <span>Password</span>
+              <input
+                type="password"
+                value={authPassword}
+                onChange={(event) => {
+                  setAuthPassword(event.target.value)
+                  setAuthError('')
+                }}
+                placeholder={authMode === 'signup' ? 'Create a strong password' : 'Your password'}
+                minLength={authMode === 'signup' ? PASSWORD_MIN_LENGTH : 6}
+                autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
+              />
+            </label>
+            {authMode === 'signup' && <PasswordRequirements password={authPassword} />}
+          </div>
 
           <div className={`auth-reset-slot ${authMode !== 'login' ? 'auth-reset-slot--hidden' : ''}`}>
             <button
@@ -342,9 +376,6 @@ function Dashboard() {
             </p>
           </div>
           <div className="dashboard-actions">
-            <Link to="/base/intake" className="btn accent">
-              Start new intake
-            </Link>
             <button type="button" className="btn secondary" onClick={handleSignOut} disabled={signingOut}>
               {signingOut ? 'Signing out...' : 'Sign out'}
             </button>
@@ -368,26 +399,75 @@ function Dashboard() {
           )}
 
           {!casesLoading && cases.length > 0 && (
-            <div className="cases-grid">
-              {cases.map((item) => {
-                const location = [item.city, item.state].filter(Boolean).join(', ') || 'Unspecified location'
-                return (
-                  <Link
-                    key={item.case_id}
-                    to={`/dashboard/cases/${item.case_id}`}
-                    className="case-card case-card--link"
-                  >
-                    <div className="case-card__body">
-                      <p className="case-title">Incident · {location}</p>
-                      <p className="case-meta">Submitted {formatDate(item.created_at)}</p>
-                      <p className="case-meta">Docs uploaded: {item.doc_count}</p>
-                      <p className="case-meta">Agreements: {item.agreement_count}</p>
-                    </div>
-                    <span className="status-pill">{item.status}</span>
-                  </Link>
-                )
-              })}
+            <div className="cases-table-wrap">
+              <table className="cases-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Case snapshot</th>
+                    <th scope="col">Submitted</th>
+                    <th scope="col">Documents</th>
+                    <th scope="col">Agreements</th>
+                    <th scope="col">Status</th>
+                    <th scope="col"><span className="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cases.map((item) => {
+                    const location = [item.city, item.state].filter(Boolean).join(', ') || 'Unspecified location'
+                    return (
+                      <tr key={item.case_id}>
+                        <td data-label="Case">
+                          <Link
+                            to={`/dashboard/cases/${item.case_id}`}
+                            className="case-table__title"
+                          >
+                            Incident · {location}
+                          </Link>
+                        </td>
+                        <td data-label="Submitted">{formatDate(item.created_at)}</td>
+                        <td data-label="Documents">{item.doc_count}</td>
+                        <td data-label="Agreements">{item.agreement_count}</td>
+                        <td data-label="Status"><span className="status-pill">{item.status}</span></td>
+                        <td className="case-table__action-cell">
+                          <Link
+                            to={`/dashboard/cases/${item.case_id}`}
+                            className="case-table__action"
+                            aria-label={`View incident in ${location}`}
+                          >
+                            View
+                          </Link>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
+          )}
+
+          {!casesLoading && caseTotal > 0 && (
+            <nav className="cases-pagination" aria-label="Case list pagination">
+              <p>
+                Showing {firstCaseNumber}–{lastCaseNumber} of {caseTotal}
+              </p>
+              <div className="cases-pagination__controls">
+                <button
+                  type="button"
+                  onClick={() => setCasePage((currentPage) => currentPage - 1)}
+                  disabled={casePage === 1}
+                >
+                  Previous
+                </button>
+                <span>Page {casePage} of {pageCount}</span>
+                <button
+                  type="button"
+                  onClick={() => setCasePage((currentPage) => currentPage + 1)}
+                  disabled={casePage >= pageCount}
+                >
+                  Next
+                </button>
+              </div>
+            </nav>
           )}
         </section>
         {signOutError && <p className="error">{signOutError}</p>}

@@ -268,16 +268,45 @@
   text-align: center;
 }
 
+.realtime-intake__health-notice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 12px;
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+.realtime-intake__health-notice strong {
+  font-size: 0.78rem;
+}
+
+.realtime-intake__health-notice p {
+  margin: 3px 0 0;
+  color: #cbd5e1;
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.realtime-intake__health-notice label {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: #cbd5e1;
+  font-size: 0.72rem;
+}
+
+.realtime-intake__health-notice input {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
 .realtime-intake__auth {
   display: grid;
   gap: 14px;
-}
-
-.realtime-intake__auth-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
 }
 
 .realtime-intake__auth h3,
@@ -289,28 +318,25 @@
   font-size: 1rem;
 }
 
-.realtime-intake__auth-heading p {
-  margin-top: 4px;
-  color: #94a3b8;
-  font-size: 0.78rem;
-}
-
 .realtime-intake__auth-toggle {
   display: flex;
   flex: 0 0 auto;
-  padding: 3px;
-  border-radius: 10px;
+  justify-self: center;
+  padding: 4px;
+  border-radius: 14px;
   background: #1e293b;
 }
 
 .realtime-intake .realtime-intake__auth-toggle button {
-  padding: 7px 10px;
+  min-height: 44px;
+  padding: 9px 18px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 11px;
   background: transparent;
   color: #94a3b8;
   box-shadow: none;
-  font-size: 0.72rem;
+  font-size: 0.88rem;
+  font-weight: 700;
 }
 
 .realtime-intake .realtime-intake__auth-toggle button.is-active {
@@ -559,8 +585,8 @@
   flex: 1 0 100%;
   margin: 0;
   color: #94a3b8;
-  font-size: 0.72rem;
-  text-align: left;
+  font-size: 0.82rem;
+  text-align: center;
 }
 
 .realtime-intake__pending-file {
@@ -796,11 +822,11 @@
   }
 
   .realtime-intake .realtime-intake__close {
-    flex-basis: 40px;
-    width: 40px;
-    min-width: 40px;
-    height: 40px;
-    min-height: 40px;
+    flex-basis: 44px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
   }
 
   .realtime-intake__message {
@@ -825,14 +851,28 @@
   .realtime-intake .realtime-intake__mic-toggle,
   .realtime-intake .realtime-intake__attach,
   .realtime-intake .realtime-intake__send {
-    flex-basis: 40px;
+    flex-basis: 44px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .realtime-intake__text-input {
+    height: 44px;
+  }
+
+  .realtime-intake__pending-file {
+    width: 100%;
+  }
+
+  .realtime-intake .realtime-intake__pending-file button {
     width: 40px;
     min-width: 40px;
     height: 40px;
   }
 
-  .realtime-intake__auth-heading {
-    display: grid;
+  .realtime-intake__footer-status {
+    flex-wrap: wrap;
   }
 
   .realtime-intake__auth-toggle {

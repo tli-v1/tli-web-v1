@@ -11,9 +11,23 @@ import {
 import { ensureUserProfile } from '../api/userProfile'
 import { app } from '../config/firebase'
 import type { User } from '../types'
+import {
+  resolveFullName,
+  resolvePhoneNumber,
+  resolvePreferredContact,
+} from './contactNormalization'
+import {
+  resolveDaysMissed,
+  resolveHourlyRateUsd,
+  resolveLostWagesUsd,
+  resolveMedicalBillsUsd,
+  resolveOtherExpensesUsd,
+  resolvePropertyDamageUsd,
+} from './damageNormalization'
 import type { ChatIntakeDraft } from './intakeFlow'
+import { resolveLocation } from './locationNormalization'
 
-interface IntakeFile {
+export interface IntakeFile {
   name: string
   storagePath: string
 }
@@ -23,13 +37,22 @@ export interface StructuredIntake {
   incidentDate: string
   city: string
   stateCode: string
+  locationDetails: string
   adverseParty: string
   insurerName: string
   policyNumber: string
   claimNumber: string
+  injuries: string
+  treatment: string
   medicalBillsUsd: number
+  propertyDamageUsd: number
+  otherExpensesUsd: number
   daysMissed: number
   hourlyRateUsd: number
+  lostWagesUsd: number
+  emotionalImpact: string
+  otherDamages: string
+  damageDetails: string
   fullName: string
   preferredContact: 'email' | 'phone' | 'text'
   email: string
@@ -45,13 +68,22 @@ const structuredIntakeSchema = Schema.object({
     incidentDate: Schema.string(),
     city: Schema.string(),
     stateCode: Schema.string(),
+    locationDetails: Schema.string(),
     adverseParty: Schema.string(),
     insurerName: Schema.string(),
     policyNumber: Schema.string(),
     claimNumber: Schema.string(),
+    injuries: Schema.string(),
+    treatment: Schema.string(),
     medicalBillsUsd: Schema.number(),
+    propertyDamageUsd: Schema.number(),
+    otherExpensesUsd: Schema.number(),
     daysMissed: Schema.number(),
     hourlyRateUsd: Schema.number(),
+    lostWagesUsd: Schema.number(),
+    emotionalImpact: Schema.string(),
+    otherDamages: Schema.string(),
+    damageDetails: Schema.string(),
     fullName: Schema.string(),
     preferredContact: Schema.enumString({
       enum: ['email', 'phone', 'text'],
@@ -75,10 +107,12 @@ const processingModel = getGenerativeModel(ai, {
 export async function processIntakeIntoCase({
   draft,
   files,
+  prepareFiles,
   user,
 }: {
   draft: ChatIntakeDraft
   files: IntakeFile[]
+  prepareFiles?: (caseId: string) => Promise<IntakeFile[]>
   user: User
 }): Promise<{ caseId: string; structured: StructuredIntake }> {
   const currentDate = new Date().toISOString().slice(0, 10)
@@ -91,7 +125,18 @@ Rules:
 - Resolve relative dates using today's date: ${currentDate}.
 - incidentDate must be YYYY-MM-DD. If no date can be reasonably inferred, use ${currentDate}.
 - stateCode should be a two-letter US postal code when possible, otherwise empty.
+- locationDetails should preserve the complete place the user gave, including a street, intersection, building, landmark, or nearby description.
 - Preserve the user's incident description faithfully and concisely.
+- Expand monetary shorthand. For example, "30K" and "30 thousand" mean 30000.
+- medicalBillsUsd includes medical bills, medical expenses, and medical damages stated by the user.
+- propertyDamageUsd is the stated vehicle or other property repair/damage amount.
+- otherExpensesUsd is a stated total for other out-of-pocket costs that is not already included in medical bills or property damage.
+- daysMissed is the number of work days missed. Convert missed work weeks to five work days per week.
+- hourlyRateUsd is the user's hourly pay rate, not a bill or total loss.
+- lostWagesUsd is an explicitly stated lost-income total. If it is not stated but daysMissed and hourlyRateUsd are known, calculate daysMissed * 8 * hourlyRateUsd.
+- injuries, treatment, emotionalImpact, and otherDamages should preserve supported non-financial details in their respective categories.
+- damageDetails should concisely preserve the complete injuries, treatment, expenses, property damage, work loss, emotional effects, and other impacts answer, including details that do not fit another field.
+- Preserve the user's phone number in the phone field. Do not confuse it with a policy or claim number.
 - consentStore and consentContact are true only if the user agreed.
 - preferredContact defaults to email.
 
@@ -132,12 +177,21 @@ ${JSON.stringify(draft.answers, null, 2)}`
         incident_date: structured.incidentDate,
         city: structured.city,
         state_code: structured.stateCode,
+        location_details: structured.locationDetails,
       }),
       createDamages({
         case_id: caseId,
+        injuries: structured.injuries,
+        treatment: structured.treatment,
         medical_bills_usd: structured.medicalBillsUsd,
+        property_damage_usd: structured.propertyDamageUsd,
+        other_expenses_usd: structured.otherExpensesUsd,
         days_missed: structured.daysMissed,
         hourly_rate_usd: structured.hourlyRateUsd,
+        lost_wages_usd: structured.lostWagesUsd,
+        emotional_impact: structured.emotionalImpact,
+        other_damages: structured.otherDamages,
+        details: structured.damageDetails,
       }),
       createCaseContact({
         case_id: caseId,
@@ -168,7 +222,8 @@ ${JSON.stringify(draft.answers, null, 2)}`
     const dataError = incident.error || damages.error || contact.error || parties.error
     if (dataError) throw new Error(dataError)
 
-    for (const file of files) {
+    const preparedFiles = prepareFiles ? await prepareFiles(caseId) : []
+    for (const file of [...files, ...preparedFiles]) {
       const document = await createDocument({
         case_id: caseId,
         kind: documentKind(file.name),
@@ -194,7 +249,20 @@ function normalizeStructuredIntake(
   const validDate = /^\d{4}-\d{2}-\d{2}$/.test(value.incidentDate || '')
     ? value.incidentDate!
     : fallbackDate
-  const stateCode = (value.stateCode || '').trim().toUpperCase()
+  const location = resolveLocation(
+    value.city,
+    value.stateCode,
+    value.locationDetails,
+    draft,
+  )
+  const daysMissed = resolveDaysMissed(value.daysMissed, draft)
+  const hourlyRateUsd = resolveHourlyRateUsd(value.hourlyRateUsd, draft)
+  const lostWagesUsd = resolveLostWagesUsd(
+    value.lostWagesUsd,
+    draft,
+    daysMissed,
+    hourlyRateUsd,
+  )
 
   return {
     description:
@@ -202,21 +270,28 @@ function normalizeStructuredIntake(
       || clean(draft.answers.whatHappened)
       || 'Conversational intake submitted without a description.',
     incidentDate: validDate,
-    city: clean(value.city),
-    stateCode: /^[A-Z]{2}$/.test(stateCode) ? stateCode : '',
+    city: location.city,
+    stateCode: location.stateCode,
+    locationDetails: location.locationDetails,
     adverseParty: clean(value.adverseParty),
     insurerName: clean(value.insurerName),
     policyNumber: clean(value.policyNumber),
     claimNumber: clean(value.claimNumber),
-    medicalBillsUsd: nonnegative(value.medicalBillsUsd),
-    daysMissed: Math.round(nonnegative(value.daysMissed)),
-    hourlyRateUsd: nonnegative(value.hourlyRateUsd),
-    fullName: clean(value.fullName),
-    preferredContact: ['email', 'phone', 'text'].includes(value.preferredContact || '')
-      ? value.preferredContact!
-      : 'email',
+    injuries: clean(value.injuries),
+    treatment: clean(value.treatment),
+    medicalBillsUsd: resolveMedicalBillsUsd(value.medicalBillsUsd, draft),
+    propertyDamageUsd: resolvePropertyDamageUsd(value.propertyDamageUsd, draft),
+    otherExpensesUsd: resolveOtherExpensesUsd(value.otherExpensesUsd, draft),
+    daysMissed,
+    hourlyRateUsd,
+    lostWagesUsd,
+    emotionalImpact: clean(value.emotionalImpact),
+    otherDamages: clean(value.otherDamages),
+    damageDetails: clean(value.damageDetails) || clean(draft.answers.damages),
+    fullName: resolveFullName(value.fullName, draft),
+    preferredContact: resolvePreferredContact(value.preferredContact, draft),
     email: clean(value.email) || user.email,
-    phone: clean(value.phone),
+    phone: resolvePhoneNumber(value.phone, draft),
     consentStore: Boolean(value.consentStore),
     consentContact: Boolean(value.consentContact),
   }
@@ -224,11 +299,6 @@ function normalizeStructuredIntake(
 
 function clean(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
-}
-
-function nonnegative(value: unknown): number {
-  const number = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(number) && number > 0 ? number : 0
 }
 
 function documentKind(name: string): string {

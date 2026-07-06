@@ -11,15 +11,28 @@ import {
   signOut,
   signUp,
 } from '../../api/auth'
+import {
+  getPasswordPolicyError,
+  PASSWORD_MIN_LENGTH,
+} from '../../utils/passwordPolicy'
 import { getStateCodes, type StateCode } from '../../api/stateCodes'
 import { ensureUserProfile } from '../../api/userProfile'
 import { createCase, deleteCase, createIncident, createDamages, createCaseContact, createParties, createDocument } from '../../api/intake'
 import { uploadFile, removeFiles } from '../../storage/fileUpload'
 import { intakeFormSchema } from '../../intake/intakeFormSchema'
+import {
+  buildTextDamagesPayload,
+  buildTextIncidentPayload,
+} from '../../intake/textIntakePayload'
+import {
+  ACCEPTED_CASE_FILE_TYPES,
+  validateCaseFiles,
+} from '../../storage/fileValidation'
 import type { User } from '../../types'
 import SocialAuthButtons, {
   type SocialAuthProvider,
 } from '../SocialAuthButtons/SocialAuthButtons'
+import PasswordRequirements from '../PasswordRequirements/PasswordRequirements'
 import './IntakeForm.css'
 
 const steps = intakeFormSchema.sections
@@ -29,15 +42,21 @@ interface FormData {
   incidentDate: string;
   city: string;
   state: string;
+  locationDetails: string;
   adverseParty: string;
   insurerName: string;
   policyNumber: string;
   claimNumber: string;
-  policeReportFile: string;
-  incidentPhotosFile: string;
-  medicalSummaryFile: string;
+  caseFiles: string;
   authorizeDocuments: boolean;
+  injuries: string;
+  treatment: string;
+  emotionalImpact: string;
+  otherDamages: string;
+  damageDetails: string;
   medicalBills: string;
+  propertyDamage: string;
+  otherExpenses: string;
   daysMissed: string;
   hourlyRate: string;
   fullName: string;
@@ -48,26 +67,26 @@ interface FormData {
   consentContact: boolean;
 }
 
-interface SelectedFiles {
-  policeReportFile: File | null;
-  incidentPhotosFile: File | null;
-  medicalSummaryFile: File | null;
-}
-
 const initialFormData: FormData = {
   whatHappened: '',
   incidentDate: '',
   city: '',
   state: '',
+  locationDetails: '',
   adverseParty: '',
   insurerName: '',
   policyNumber: '',
   claimNumber: '',
-  policeReportFile: '',
-  incidentPhotosFile: '',
-  medicalSummaryFile: '',
+  caseFiles: '',
   authorizeDocuments: false,
+  injuries: '',
+  treatment: '',
+  emotionalImpact: '',
+  otherDamages: '',
+  damageDetails: '',
   medicalBills: '',
+  propertyDamage: '',
+  otherExpenses: '',
   daysMissed: '',
   hourlyRate: '',
   fullName: '',
@@ -85,8 +104,6 @@ const currencyInputValue = (value: string) => {
   const amount = Number(value)
   return Number.isFinite(amount) ? roundToCents(amount).toFixed(2) : value
 }
-
-const currencyNumber = (value: string) => roundToCents(Number(value) || 0)
 
 const formatCurrency = (value: number) =>
   `$${roundToCents(value).toLocaleString(undefined, {
@@ -135,11 +152,7 @@ function IntakeForm() {
   const [resetLoading, setResetLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
-  const [selectedFiles, setSelectedFiles] = useState<SelectedFiles>({
-    policeReportFile: null,
-    incidentPhotosFile: null,
-    medicalSummaryFile: null,
-  })
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [profileEnsuredUserId, setProfileEnsuredUserId] = useState('')
   const [stateCodes, setStateCodes] = useState<StateCode[]>([])
   const [stateDropdownOpen, setStateDropdownOpen] = useState(false)
@@ -244,19 +257,25 @@ function IntakeForm() {
     return nameMatch ? nameMatch.code : upper
   }
 
-  const handleFileChange = (event) => {
-    const { name, files } = event.target
-    const file = files?.[0] ?? null
-    setFormData((prev) => ({
-      ...prev,
-      [name]: file?.name ?? '',
-    }))
-    setSelectedFiles((prev) => ({
-      ...prev,
-      [name]: file,
-    }))
+  const handleFileChange = async (event) => {
+    const files = Array.from(event.target.files ?? []) as File[]
+    event.target.value = ''
     setSubmitted(false)
-    setSubmitError('')
+    try {
+      await validateCaseFiles(files)
+      setFormData((prev) => ({
+        ...prev,
+        caseFiles: files.map((file) => file.name).join(', '),
+      }))
+      setSelectedFiles(files)
+      setSubmitError('')
+    } catch (error) {
+      setFormData((prev) => ({ ...prev, caseFiles: '' }))
+      setSelectedFiles([])
+      setSubmitError(
+        error instanceof Error ? error.message : 'One or more attachments are not allowed.',
+      )
+    }
   }
 
   const handleStateChange = (event) => {
@@ -327,8 +346,14 @@ function IntakeForm() {
       return
     }
 
-    if (authPassword.length < 6) {
-      setAuthError('Password must be at least 6 characters long.')
+    const passwordError =
+      authMode === 'signup'
+        ? getPasswordPolicyError(authPassword)
+        : authPassword.length < 6
+          ? 'Enter your password.'
+          : null
+    if (passwordError) {
+      setAuthError(passwordError)
       return
     }
 
@@ -503,20 +528,8 @@ function IntakeForm() {
       if (caseError) throw new Error(caseError)
       createdCaseId = caseData.id
 
-      const incidentPayload = {
-        case_id: createdCaseId,
-        description: formData.whatHappened.trim(),
-        incident_date: formData.incidentDate || null,
-        city: formData.city.trim(),
-        state_code: formData.state.trim(),
-      }
-
-      const damagesPayload = {
-        case_id: createdCaseId,
-        medical_bills_usd: currencyNumber(formData.medicalBills),
-        days_missed: Number(formData.daysMissed) || 0,
-        hourly_rate_usd: currencyNumber(formData.hourlyRate),
-      }
+      const incidentPayload = buildTextIncidentPayload(createdCaseId, formData)
+      const damagesPayload = buildTextDamagesPayload(createdCaseId, formData)
 
       const contactPayload = {
         case_id: createdCaseId,
@@ -557,14 +570,7 @@ function IntakeForm() {
         throw new Error(firstError)
       }
 
-      const fileEntries = [
-        { field: 'policeReportFile', kind: 'police_report' },
-        { field: 'incidentPhotosFile', kind: 'photos' },
-        { field: 'medicalSummaryFile', kind: 'er_bill' },
-      ].filter((entry) => selectedFiles[entry.field])
-
-      for (const entry of fileEntries) {
-        const file = selectedFiles[entry.field]
+      for (const file of selectedFiles) {
         const { path, error: storageError } = await uploadFile({
           bucket: 'case-docs',
           file,
@@ -576,7 +582,7 @@ function IntakeForm() {
 
         const { error: docError } = await createDocument({
           case_id: createdCaseId,
-          kind: entry.kind,
+          kind: 'other',
           original_filename: file.name,
           storage_path: `case-docs/${path}`,
           uploaded_by: sessionUser.id,
@@ -587,11 +593,7 @@ function IntakeForm() {
       setSubmitted(true)
       setSubmittedCaseId(createdCaseId)
       setFormData({ ...initialFormData })
-      setSelectedFiles({
-        policeReportFile: null,
-        incidentPhotosFile: null,
-        medicalSummaryFile: null,
-      })
+      setSelectedFiles([])
       setCurrentStep(0)
     } catch (error) {
       setSubmitError(error.message || 'Something went wrong while submitting your intake.')
@@ -699,6 +701,17 @@ function IntakeForm() {
           </div>
         </label>
       </div>
+
+      <label className="field">
+        <span>Address, intersection, building, or nearby landmark (optional)</span>
+        <input
+          type="text"
+          name="locationDetails"
+          value={formData.locationDetails}
+          onChange={handleChange}
+          placeholder="e.g., Main St and 5th Ave, near City Hall"
+        />
+      </label>
     </>
   )
 
@@ -773,41 +786,18 @@ function IntakeForm() {
   const renderDocuments = () => (
     <>
       <label className="field">
-        <span>Police or incident report</span>
+        <span>Files (optional)</span>
         <input
           type="file"
-          name="policeReportFile"
+          name="caseFiles"
           onChange={handleFileChange}
-          accept=".pdf,.jpg,.jpeg,.png"
+          accept={ACCEPTED_CASE_FILE_TYPES}
+          multiple
         />
         <small className="file-name">
-          {formData.policeReportFile || 'No file selected yet'}
-        </small>
-      </label>
-
-      <label className="field">
-        <span>Photos (zip or image)</span>
-        <input
-          type="file"
-          name="incidentPhotosFile"
-          onChange={handleFileChange}
-          accept=".zip,.pdf,.jpg,.jpeg,.png"
-        />
-        <small className="file-name">
-          {formData.incidentPhotosFile || 'No file selected yet'}
-        </small>
-      </label>
-
-      <label className="field">
-        <span>ER bill or visit summary</span>
-        <input
-          type="file"
-          name="medicalSummaryFile"
-          onChange={handleFileChange}
-          accept=".pdf,.jpg,.jpeg,.png"
-        />
-        <small className="file-name">
-          {formData.medicalSummaryFile || 'No file selected yet'}
+          {selectedFiles.length
+            ? `${selectedFiles.length} file${selectedFiles.length === 1 ? '' : 's'} selected: ${formData.caseFiles}`
+            : 'No files selected yet'}
         </small>
       </label>
 
@@ -840,6 +830,63 @@ function IntakeForm() {
 
   const renderDamages = () => (
     <>
+      <div className="field-grid">
+        <label className="field">
+          <span>Injuries</span>
+          <textarea
+            name="injuries"
+            value={formData.injuries}
+            onChange={handleChange}
+            rows={3}
+            placeholder="Describe any injuries, symptoms, or diagnoses."
+          />
+        </label>
+        <label className="field">
+          <span>Treatment</span>
+          <textarea
+            name="treatment"
+            value={formData.treatment}
+            onChange={handleChange}
+            rows={3}
+            placeholder="Describe medical care, therapy, medication, or planned treatment."
+          />
+        </label>
+      </div>
+
+      <div className="field-grid">
+        <label className="field">
+          <span>Emotional impact</span>
+          <textarea
+            name="emotionalImpact"
+            value={formData.emotionalImpact}
+            onChange={handleChange}
+            rows={3}
+            placeholder="Describe stress, anxiety, sleep disruption, or other emotional effects."
+          />
+        </label>
+        <label className="field">
+          <span>Other losses or damages</span>
+          <textarea
+            name="otherDamages"
+            value={formData.otherDamages}
+            onChange={handleChange}
+            rows={3}
+            placeholder="Describe any other impact that does not fit below."
+          />
+        </label>
+      </div>
+
+      <label className="field">
+        <span>Additional impact details</span>
+        <textarea
+          name="damageDetails"
+          value={formData.damageDetails}
+          onChange={handleChange}
+          rows={4}
+          placeholder="Add any context, ongoing needs, or details not captured above."
+        />
+      </label>
+
       <label className="field">
         <span>Medical bills to date in USD (optional)</span>
         <input
@@ -853,6 +900,35 @@ function IntakeForm() {
           placeholder="e.g., 1500"
         />
       </label>
+
+      <div className="field-grid">
+        <label className="field">
+          <span>Property damage in USD</span>
+          <input
+            type="number"
+            name="propertyDamage"
+            value={formData.propertyDamage}
+            onChange={handleChange}
+            onBlur={handleCurrencyBlur}
+            min="0"
+            step="0.01"
+            placeholder="Vehicle or other property damage"
+          />
+        </label>
+        <label className="field">
+          <span>Other out-of-pocket expenses in USD</span>
+          <input
+            type="number"
+            name="otherExpenses"
+            value={formData.otherExpenses}
+            onChange={handleChange}
+            onBlur={handleCurrencyBlur}
+            min="0"
+            step="0.01"
+            placeholder="Transportation, rentals, or other costs"
+          />
+        </label>
+      </div>
 
       <div className="field-grid">
         <label className="field">
@@ -1011,26 +1087,30 @@ function IntakeForm() {
               onSelect={handleSocialAuth}
             />
 
-            <label className="field">
-              <span>Password</span>
-              <input
-                type="password"
-                name="authPassword"
-                value={authPassword}
-                onChange={(event) => {
-                  setAuthPassword(event.target.value)
-                  setAuthError('')
-                  setAuthMessage('')
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter') return
-                  event.preventDefault()
-                  void handleAuthAction()
-                }}
-                placeholder="At least 6 characters"
-                minLength={6}
-              />
-            </label>
+            <div className="password-field-with-requirements">
+              <label className="field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  name="authPassword"
+                  value={authPassword}
+                  onChange={(event) => {
+                    setAuthPassword(event.target.value)
+                    setAuthError('')
+                    setAuthMessage('')
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return
+                    event.preventDefault()
+                    void handleAuthAction()
+                  }}
+                  placeholder={authMode === 'signup' ? 'Create a strong password' : 'Your password'}
+                  minLength={authMode === 'signup' ? PASSWORD_MIN_LENGTH : 6}
+                  autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
+                />
+              </label>
+              {authMode === 'signup' && <PasswordRequirements password={authPassword} />}
+            </div>
 
             <p className="helper-text">
               Account email:{' '}

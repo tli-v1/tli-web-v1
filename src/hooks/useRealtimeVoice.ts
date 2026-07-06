@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  claimRealtimeIntakeSession,
   createMinervaRealtimeClientSecret,
   ensureRealtimeIntakeSession,
   persistRealtimeMessage,
 } from '../api/realtime'
+import { normalizeVoiceTranscript } from '../utils/voiceTranscript'
 
 const MAX_SESSION_MS = 8 * 60 * 1000
 const MAX_USER_TURNS = 20
@@ -12,6 +14,8 @@ const MAX_USER_MESSAGE_CHARACTERS = 800
 const WARNING_SESSION_MS = 6 * 60 * 1000
 const WARNING_USER_TURNS = 16
 const WARNING_TOTAL_USER_CHARACTERS = 4800
+const CONNECTION_TIMEOUT_MS = 20 * 1000
+const DISCONNECT_GRACE_MS = 5 * 1000
 const OFF_TOPIC_ENDING =
   'I’m going to pause this intake because the responses are not related to the questions.'
 const REALTIME_GUARDRAIL_INSTRUCTIONS = `Track consecutive answers that do not plausibly answer your current intake question.
@@ -19,8 +23,9 @@ For the first and second irrelevant answer, briefly redirect to the same questio
 For the third consecutive irrelevant answer, say exactly: "I’m going to pause this intake because the responses are not related to the questions. You can start again when you’re ready." Do not ask another question.
 Reset the count after a plausibly relevant answer. Ignore silence, background noise, isolated filler sounds, and unintelligible audio. Never infer an answer from them. Keep every response under 80 spoken words.
 Do not ask the user to speak or type an email address. Account email is collected by the secure form.
-Follow this intake order and do not skip ahead: what happened; when; where; involved people or organizations; insurance or claim information; injuries, treatment, expenses, property damage, work or income loss, emotional effects, and other losses; then one generic optional file-upload step; then contact preferences and consent.
-The file-upload step must not occur until the incident, timing, location, parties, insurance, injuries, treatment, and damages questions have been addressed. At that point, ask once whether the user wants to attach any relevant files, such as reports, medical records or bills, photos, videos, insurance documents, receipts, or correspondence. Tell them the attachment button is below. Do not ask for file categories separately, do not request each file type individually, and do not revisit uploads after that step. Continue normally if they have no files or want to upload later.
+Follow this intake order and do not skip ahead: what happened; when; where; involved people or organizations; insurance or claim information; injuries, treatment, expenses, property damage, work or income loss, emotional effects, and other losses; then one generic optional file-upload step; then full name; then phone number; then preferred contact method; then consent.
+During contact collection, ask "What is the best phone number to reach you?" as its own focused question. Ask it even if the user prefers email, and accept that they may decline or not know it. Afterward, separately ask whether they prefer email, a phone call, or a text message. Do not treat the preferred contact method as the phone-number answer.
+The file-upload step must not occur until the incident, timing, location, parties, insurance, injuries, treatment, and damages questions have been addressed. At that point, ask once whether the user wants to attach any relevant files, such as reports, medical records or bills, photos, videos, insurance documents, receipts, or correspondence. Tell them the attachment button and health-information authorization are below. Explain that selected files remain pending and are securely submitted only after the user signs in or creates an account at the end. Do not ask for file categories separately, do not request each file type individually, and do not revisit uploads after that step. Continue normally if they have no files or want to upload later.
 When the legal intake is complete, say exactly: "Your intake is complete and ready to save. Please use the secure form below to sign in or create an account." Do not ask another question.`
 const INTAKE_COMPLETE_PATTERN =
   /\b(intake is complete|intake complete|complete and ready to save|ready for processing)\b/i
@@ -64,6 +69,9 @@ export function useRealtimeVoice() {
   const respondingRef = useRef(false)
   const sessionTimerRef = useRef<number | null>(null)
   const sessionWarningTimerRef = useRef<number | null>(null)
+  const connectionTimerRef = useRef<number | null>(null)
+  const disconnectTimerRef = useRef<number | null>(null)
+  const connectionAbortRef = useRef<AbortController | null>(null)
   const userTurnCountRef = useRef(0)
   const totalUserCharactersRef = useRef(0)
   const pendingInputLockRef = useRef('')
@@ -106,6 +114,16 @@ export function useRealtimeVoice() {
       window.clearTimeout(sessionWarningTimerRef.current)
       sessionWarningTimerRef.current = null
     }
+    if (connectionTimerRef.current !== null) {
+      window.clearTimeout(connectionTimerRef.current)
+      connectionTimerRef.current = null
+    }
+    if (disconnectTimerRef.current !== null) {
+      window.clearTimeout(disconnectTimerRef.current)
+      disconnectTimerRef.current = null
+    }
+    connectionAbortRef.current?.abort()
+    connectionAbortRef.current = null
     dataChannelRef.current?.close()
     dataChannelRef.current = null
     peerRef.current?.close()
@@ -192,7 +210,10 @@ export function useRealtimeVoice() {
     setIsMicrophoneMuted(true)
   }, [])
 
-  const sendTextMessage = useCallback((content: string) => {
+  const sendTextMessage = useCallback((
+    content: string,
+    options: { preserveMicrophone?: boolean } = {},
+  ) => {
     const cleanContent = content.replace(/\s+/g, ' ').trim()
     const dataChannel = dataChannelRef.current
 
@@ -207,10 +228,12 @@ export function useRealtimeVoice() {
       return false
     }
 
-    streamRef.current?.getAudioTracks().forEach((track) => {
-      track.enabled = false
-    })
-    setIsMicrophoneMuted(true)
+    if (!options.preserveMicrophone) {
+      streamRef.current?.getAudioTracks().forEach((track) => {
+        track.enabled = false
+      })
+      setIsMicrophoneMuted(true)
+    }
     setError('')
 
     const messageId = `typed-${crypto.randomUUID()}`
@@ -239,7 +262,7 @@ export function useRealtimeVoice() {
       event.type === 'conversation.item.input_audio_transcription.completed'
       && event.transcript
     ) {
-      const cleanTranscript = event.transcript.replace(/\s+/g, ' ').trim()
+      const cleanTranscript = normalizeVoiceTranscript(event.transcript)
       const dataChannel = dataChannelRef.current
       if (!cleanTranscript || !registerUserInput(cleanTranscript)) return
 
@@ -331,6 +354,12 @@ export function useRealtimeVoice() {
     return sessionId
   }, [])
 
+  const claimSession = useCallback(async () => {
+    const sessionId = sessionIdRef.current ?? await ensureSession()
+    await claimRealtimeIntakeSession(sessionId)
+    return sessionId
+  }, [ensureSession])
+
   const start = useCallback(async () => {
     if (startingRef.current || connectedRef.current) return
     const connectionAttempt = connectionAttemptRef.current + 1
@@ -345,6 +374,17 @@ export function useRealtimeVoice() {
     pendingInputLockRef.current = ''
     userTurnCountRef.current = 0
     totalUserCharactersRef.current = 0
+
+    const failConnection = (message: string) => {
+      if (connectionAttempt !== connectionAttemptRef.current) return
+      stop()
+      setStatus('error')
+      setError(message)
+    }
+
+    connectionTimerRef.current = window.setTimeout(() => {
+      failConnection('The voice connection timed out. Check your network and try again.')
+    }, CONNECTION_TIMEOUT_MS)
 
     try {
       await ensureSession()
@@ -375,10 +415,20 @@ export function useRealtimeVoice() {
 
       peer.ontrack = (event) => {
         audio.srcObject = event.streams[0] ?? new MediaStream([event.track])
-        void audio.play().catch(() => undefined)
+        event.track.addEventListener('ended', () => {
+          failConnection('The agent audio connection ended. Try reconnecting.')
+        }, { once: true })
+        void audio.play().catch(() => {
+          failConnection('The browser could not play the agent audio. Try reconnecting.')
+        })
       }
 
-      stream.getAudioTracks().forEach((track) => peer.addTrack(track, stream))
+      stream.getAudioTracks().forEach((track) => {
+        track.addEventListener('ended', () => {
+          failConnection('Microphone access ended. Check your browser permissions and try again.')
+        }, { once: true })
+        peer.addTrack(track, stream)
+      })
 
       const dataChannel = peer.createDataChannel('oai-events')
       dataChannelRef.current = dataChannel
@@ -398,6 +448,11 @@ export function useRealtimeVoice() {
         }
         startingRef.current = false
         connectedRef.current = true
+        if (connectionTimerRef.current !== null) {
+          window.clearTimeout(connectionTimerRef.current)
+          connectionTimerRef.current = null
+        }
+        connectionAbortRef.current = null
         setStatus('connected')
         sessionWarningTimerRef.current = window.setTimeout(() => {
           setLimitWarning('About two minutes of input time remain in this intake.')
@@ -427,10 +482,8 @@ export function useRealtimeVoice() {
                   type: 'near_field',
                 },
                 turn_detection: {
-                  type: 'server_vad',
-                  threshold: 0.75,
-                  prefix_padding_ms: 300,
-                  silence_duration_ms: 700,
+                  type: 'semantic_vad',
+                  eagerness: 'low',
                   create_response: false,
                   interrupt_response: false,
                 },
@@ -446,34 +499,47 @@ export function useRealtimeVoice() {
           },
         }))
       })
+      dataChannel.addEventListener('error', () => {
+        failConnection('The realtime data connection failed. Try reconnecting.')
+      })
       dataChannel.addEventListener('close', () => {
-        if (connectionAttempt !== connectionAttemptRef.current) return
-        connectedRef.current = false
-        respondingRef.current = false
-        setIsResponding(false)
-        setStatus('error')
-        setError('The realtime session disconnected. Try reconnecting.')
+        failConnection('The realtime session disconnected. Try reconnecting.')
       })
 
       peer.addEventListener('connectionstatechange', () => {
-        if (
-          connectionAttempt !== connectionAttemptRef.current
-          || !['failed', 'disconnected'].includes(peer.connectionState)
-        ) {
+        if (connectionAttempt !== connectionAttemptRef.current) return
+
+        if (peer.connectionState === 'connected') {
+          if (disconnectTimerRef.current !== null) {
+            window.clearTimeout(disconnectTimerRef.current)
+            disconnectTimerRef.current = null
+          }
           return
         }
-        connectedRef.current = false
-        respondingRef.current = false
-        setIsResponding(false)
-        setStatus('error')
-        setError('The realtime session disconnected. Try reconnecting.')
+
+        if (peer.connectionState === 'disconnected') {
+          if (disconnectTimerRef.current === null) {
+            disconnectTimerRef.current = window.setTimeout(() => {
+              disconnectTimerRef.current = null
+              failConnection('The realtime session disconnected. Try reconnecting.')
+            }, DISCONNECT_GRACE_MS)
+          }
+          return
+        }
+
+        if (peer.connectionState === 'failed' || peer.connectionState === 'closed') {
+          failConnection('The realtime session disconnected. Try reconnecting.')
+        }
       })
 
       const offer = await peer.createOffer()
       await peer.setLocalDescription(offer)
+      const connectionAbort = new AbortController()
+      connectionAbortRef.current = connectionAbort
       const sdpResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
         method: 'POST',
         body: offer.sdp,
+        signal: connectionAbort.signal,
         headers: {
           Authorization: `Bearer ${ephemeralKey}`,
           'Content-Type': 'application/sdp',
@@ -497,9 +563,11 @@ export function useRealtimeVoice() {
       })
     } catch (startError) {
       if (connectionAttempt !== connectionAttemptRef.current) return
-      stop()
-      setStatus('error')
-      setError(startError instanceof Error ? startError.message : 'Unable to start voice intake.')
+      failConnection(
+        startError instanceof Error && startError.name !== 'AbortError'
+          ? startError.message
+          : 'The voice connection timed out. Check your network and try again.',
+      )
     }
   }, [ensureSession, handleServerEvent, lockUserInput, stop])
 
@@ -516,7 +584,7 @@ export function useRealtimeVoice() {
     isIntakeComplete,
     limitReason,
     limitWarning,
-    claimSession: ensureSession,
+    claimSession,
     ensureSession,
     sendTextMessage,
     start,

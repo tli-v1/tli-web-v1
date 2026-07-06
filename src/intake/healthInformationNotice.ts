@@ -1,0 +1,2 @@
+export const healthInformationNotice =
+  'Documents may contain medical or other sensitive personal information. By uploading, you authorize True Legal Innovations to securely store the files and share them with participating attorneys solely for intake review and attorney matching. Upload only information you are comfortable sharing. This authorization does not itself establish HIPAA coverage or replace any formal HIPAA authorization that may be required.'

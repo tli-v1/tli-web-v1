@@ -195,6 +195,13 @@
     transform: translateX(-50%);
   }
 
+  .navbar.nav-open {
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: max(0.8rem, env(safe-area-inset-bottom));
+  }
+
   .nav-left {
     width: 100%;
     justify-content: space-between;

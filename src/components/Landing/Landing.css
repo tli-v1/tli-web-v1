@@ -9,9 +9,9 @@
   align-self: stretch;
   text-align: center;
   background:
-    radial-gradient(ellipse 72% 44% at 50% 34%, rgba(86, 119, 190, 0.34), transparent 62%),
-    radial-gradient(ellipse 74% 54% at 50% 76%, rgba(8, 18, 43, 0.62), transparent 74%),
-    linear-gradient(135deg, #244887 0%, #1b356c 42%, #081734 100%);
+    radial-gradient(ellipse 72% 44% at 50% 34%, rgba(130, 178, 238, 0.38), transparent 62%),
+    radial-gradient(ellipse 74% 54% at 50% 76%, rgba(23, 57, 111, 0.42), transparent 74%),
+    linear-gradient(135deg, #3262aa 0%, #274f91 44%, #15366b 100%);
 }
 
 .landing section {
@@ -83,9 +83,11 @@
   --hero-nav-height: 42px;
   --hero-edge-space: clamp(2.75rem, 6vh, 4.5rem);
   background:
-    radial-gradient(ellipse 75% 48% at 50% 38%, rgba(69, 100, 171, 0.24), transparent 62%),
-    radial-gradient(ellipse 65% 50% at 50% 72%, rgba(13, 29, 63, 0.52), transparent 74%),
-    linear-gradient(135deg, #203f7a 0%, #1a3267 42%, #0b1837 100%);
+    radial-gradient(ellipse 75% 48% at 50% 38%, rgba(127, 181, 247, 0.32), transparent 62%),
+    radial-gradient(ellipse 65% 50% at 50% 72%, rgba(31, 79, 145, 0.34), transparent 74%),
+    linear-gradient(135deg, #3265b1 0%, #294f91 44%, #17366a 100%);
+  background-size: 135% 135%;
+  background-position: 50% 50%;
   border-radius: 0;
   padding-right: clamp(2.75rem, 5vw, 4.5rem);
   padding-left: clamp(2.75rem, 5vw, 4.5rem);
@@ -97,7 +99,9 @@
   gap: clamp(2.35rem, 4.8vh, 4rem);
   align-items: center;
   align-content: center;
-  animation: heroFadeIn 900ms ease both;
+  animation:
+    heroFadeIn 900ms ease both,
+    heroGradientDrift 22s ease-in-out 1s infinite alternate;
   overflow: hidden;
   isolation: isolate;
 }
@@ -445,8 +449,9 @@
   background-position: var(--hero-image-x) var(--hero-image-y);
   background-size: cover, 19px 19px, 27px 27px, 100% 100%, 100% 100%;
   background-repeat: no-repeat;
-  opacity: 0.72;
+  opacity: 0.68;
   mix-blend-mode: soft-light;
+  animation: heroTextureBreathe 13s ease-in-out infinite;
 }
 
 .hero::after {
@@ -457,19 +462,21 @@
   pointer-events: none;
   background:
     radial-gradient(ellipse 64% 40% at 50% 36%, rgba(255, 255, 255, 0.055), transparent 62%),
-    radial-gradient(ellipse 86% 40% at 50% 72%, rgba(6, 15, 38, 0.38), transparent 72%),
-    repeating-linear-gradient(88deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 5px),
+    radial-gradient(ellipse 86% 40% at 50% 72%, rgba(15, 46, 96, 0.24), transparent 72%),
+    repeating-linear-gradient(88deg, rgba(255, 255, 255, 0.016) 0 1px, transparent 1px 5px),
     radial-gradient(
       ellipse 92% 72% at 50% 76%,
-      rgba(48, 75, 138, 0.82) 0%,
-      rgba(33, 58, 112, 0.76) 28%,
-      rgba(22, 42, 84, 0.82) 52%,
-      rgba(13, 29, 63, 0.9) 76%,
-      rgba(7, 18, 43, 0.98) 100%
+      rgba(73, 115, 190, 0.58) 0%,
+      rgba(56, 101, 170, 0.58) 28%,
+      rgba(44, 84, 145, 0.66) 52%,
+      rgba(31, 65, 116, 0.76) 76%,
+      rgba(20, 47, 90, 0.9) 100%
     ),
-    linear-gradient(90deg, #1a2f5f 0%, rgba(26, 47, 95, 0.98) 12%, rgba(26, 47, 95, 0.9) 30%, rgba(26, 47, 95, 0.56) 54%, rgba(26, 47, 95, 0.16) 80%, rgba(26, 47, 95, 0.04) 100%),
-    linear-gradient(180deg, rgba(15, 29, 60, 0.24) 0%, rgba(15, 29, 60, 0.18) 100%);
+    linear-gradient(90deg, #294f8d 0%, rgba(41, 79, 141, 0.9) 12%, rgba(41, 79, 141, 0.76) 30%, rgba(41, 79, 141, 0.42) 54%, rgba(41, 79, 141, 0.12) 80%, rgba(41, 79, 141, 0.03) 100%),
+    linear-gradient(180deg, rgba(24, 55, 105, 0.14) 0%, rgba(20, 47, 90, 0.14) 100%);
+  opacity: 0.94;
   transition: filter 420ms ease, opacity 420ms ease;
+  animation: heroLightBreathe 12s ease-in-out infinite;
 }
 
 .hero.is-launching::after {
@@ -1015,6 +1022,37 @@
   }
 }
 
+@keyframes heroGradientDrift {
+  from {
+    background-position: 46% 46%;
+  }
+  to {
+    background-position: 56% 54%;
+  }
+}
+
+@keyframes heroTextureBreathe {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.76;
+    transform: scale(1.012);
+  }
+}
+
+@keyframes heroLightBreathe {
+  0%,
+  100% {
+    opacity: 0.88;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 @keyframes riseIn {
   from {
     opacity: 0;
@@ -1102,6 +1140,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .hero,
+  .hero::before,
+  .hero::after,
   .hero-card,
   .hero h1,
   .hero-mode-toggle,

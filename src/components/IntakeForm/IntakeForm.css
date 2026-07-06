@@ -298,8 +298,36 @@ input[type='file']::-webkit-file-upload-button:hover {
 }
 
 @media (max-width: 640px) {
+  .intake-card {
+    padding: 1.25rem 1rem;
+  }
+
   .nav {
     flex-direction: column;
+  }
+
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-section {
+    padding: 1rem;
+  }
+
+  .auth-status {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  input[type='file'] {
+    width: 100%;
+    min-width: 0;
+  }
+
+  input[type='file']::file-selector-button,
+  input[type='file']::-webkit-file-upload-button {
+    min-height: 44px;
+    margin-right: 0.5rem;
   }
 }
 

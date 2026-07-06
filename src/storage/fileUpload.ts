@@ -7,6 +7,7 @@ import {
 import { getIdToken } from 'firebase/auth';
 import { auth, storage } from '../config/firebase';
 import type { FileUploadParams, FileUploadResponse, SignedUrlResponse } from '../types';
+import { validateCaseFile } from './fileValidation';
 
 const DEFAULT_FOLDER = 'case-docs';
 
@@ -60,9 +61,16 @@ export async function uploadFile({
   caseId,
 }: FileUploadParams): Promise<FileUploadResponse> {
   try {
+    const validatedFile = await validateCaseFile(file);
     if (!userId || !caseId) {
       throw new Error('Missing user or case id for file upload.');
     }
+
+    const currentUser = auth.currentUser;
+    if (!currentUser || currentUser.uid !== userId) {
+      throw new Error('Sign in before uploading files to this case.');
+    }
+    await getIdToken(currentUser, true);
 
     const fileName = `${generateFileUuid()}${extensionFor(file.name)}`;
     const relativePath = `${cleanSegment(userId)}/${cleanSegment(caseId)}/${fileName}`;
@@ -70,7 +78,7 @@ export async function uploadFile({
     const fileRef = ref(storage, fullPath);
 
     await uploadBytes(fileRef, file, {
-      contentType: file.type || undefined,
+      contentType: validatedFile.contentType,
       customMetadata: {
         originalName: file.name,
         userId,
@@ -94,6 +102,7 @@ export async function uploadConversationalIntakeFile({
   intakeId: string;
 }): Promise<FileUploadResponse> {
   try {
+    const validatedFile = await validateCaseFile(file);
     if (!userId || !intakeId) {
       throw new Error('Sign in before attaching files to this intake.');
     }
@@ -110,7 +119,7 @@ export async function uploadConversationalIntakeFile({
     const fileRef = ref(storage, fullPath);
 
     await uploadBytes(fileRef, file, {
-      contentType: file.type || undefined,
+      contentType: validatedFile.contentType,
       customMetadata: {
         originalName: file.name,
         userId,

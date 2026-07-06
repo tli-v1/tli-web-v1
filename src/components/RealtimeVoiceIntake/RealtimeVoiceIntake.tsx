@@ -1,20 +1,31 @@
 import { ArrowUp, Check, LoaderCircle, Mic, MicOff, Paperclip, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { addConversationalIntakeFile } from '../../agent/initialize'
+import { updateConversationalIntakeProcessing } from '../../agent/initialize'
+import { processIntakeIntoCase, type IntakeFile } from '../../agent/processIntake'
+import { buildVoiceIntakeDraft } from '../../agent/voiceIntakeDraft'
 import {
-  getSession,
   signInWithApple,
   signInWithGoogle,
   signInWithPassword,
   signUp,
 } from '../../api/auth'
+import {
+  getPasswordPolicyError,
+  PASSWORD_MIN_LENGTH,
+} from '../../utils/passwordPolicy'
 import { useRealtimeVoice } from '../../hooks/useRealtimeVoice'
-import { uploadConversationalIntakeFile } from '../../storage/fileUpload'
+import { healthInformationNotice } from '../../intake/healthInformationNotice'
+import {
+  ACCEPTED_CASE_FILE_TYPES,
+  validateCaseFiles,
+} from '../../storage/fileValidation'
+import { removeFiles, uploadFile } from '../../storage/fileUpload'
 import type { User } from '../../types'
 import SocialAuthButtons, {
   type SocialAuthProvider,
 } from '../SocialAuthButtons/SocialAuthButtons'
+import PasswordRequirements from '../PasswordRequirements/PasswordRequirements'
 import './RealtimeVoiceIntake.css'
 
 interface RealtimeVoiceIntakeProps {
@@ -41,7 +52,9 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
   const [authLoading, setAuthLoading] = useState(false)
   const [socialAuthLoading, setSocialAuthLoading] = useState<SocialAuthProvider | null>(null)
   const [intakeSaved, setIntakeSaved] = useState(false)
+  const [processedCaseId, setProcessedCaseId] = useState('')
   const [showReadyTransition, setShowReadyTransition] = useState(false)
+  const [healthNoticeAccepted, setHealthNoticeAccepted] = useState(false)
 
   const showFileUpload = useMemo(() => {
     const latestAssistantMessage = [...realtime.messages]
@@ -68,13 +81,9 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
   useEffect(() => {
     if (!realtime.isIntakeComplete) return
 
-    void getSession().then(async (user) => {
-      if (!user || finalizingRef.current) return
-      await finalizeIntake(user)
-    })
-    // finalizeIntake intentionally runs only when completion is first detected.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [realtime.isIntakeComplete, realtime.claimSession])
+    setAuthMode('signup')
+    setAuthError('')
+  }, [realtime.isIntakeComplete])
 
   const close = () => {
     realtime.stop()
@@ -106,42 +115,57 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
 
   const submitTextMessage = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (realtime.sendTextMessage(textInput)) {
+    const message = textInput.trim()
+      || (
+        showFileUpload
+          ? pendingFiles.length > 0
+            ? `${pendingFiles.length} file${pendingFiles.length === 1 ? '' : 's'} selected for submission.`
+            : 'No files or note to add right now.'
+          : ''
+      )
+    if (realtime.sendTextMessage(message, { preserveMicrophone: showFileUpload })) {
       setTextInput('')
     }
   }
 
-  const uploadPendingFiles = async (user: User) => {
-    if (!pendingFiles.length) return
+  const uploadPendingFiles = async (user: User, caseId: string): Promise<IntakeFile[]> => {
+    if (!pendingFiles.length) return []
 
     setIsUploading(true)
     setUploadError('')
-    const sessionId = await realtime.ensureSession()
     const uploadedNames: string[] = []
+    const uploadedPaths: string[] = []
+    const intakeFiles: IntakeFile[] = []
 
     try {
       for (const file of pendingFiles) {
-        const upload = await uploadConversationalIntakeFile({
+        const upload = await uploadFile({
+          bucket: 'case-docs',
           file,
           userId: user.id,
-          intakeId: sessionId,
+          caseId,
         })
 
         if (!upload.path) {
           throw new Error(upload.error || `Unable to upload ${file.name}.`)
         }
 
-        await addConversationalIntakeFile(sessionId, {
+        uploadedPaths.push(upload.path)
+        intakeFiles.push({
           name: file.name,
-          contentType: file.type || 'application/octet-stream',
-          size: file.size,
-          storagePath: `conversational-intakes/${upload.path}`,
+          storagePath: `case-docs/${upload.path}`,
         })
         uploadedNames.push(file.name)
       }
 
       setUploadedFiles((current) => [...current, ...uploadedNames])
       setPendingFiles([])
+      return intakeFiles
+    } catch (error) {
+      if (uploadedPaths.length > 0) {
+        await removeFiles('case-docs', uploadedPaths).catch(() => undefined)
+      }
+      throw error
     } finally {
       setIsUploading(false)
     }
@@ -151,15 +175,40 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
     finalizingRef.current = true
     setAuthLoading(true)
     setAuthError('')
+    let processingSessionId: string | null = null
 
     try {
-      await realtime.claimSession()
-      await uploadPendingFiles(user)
+      processingSessionId = await realtime.claimSession()
+      await updateConversationalIntakeProcessing(processingSessionId, {
+        status: 'processing',
+      })
+
+      const draft = buildVoiceIntakeDraft(realtime.messages)
+      const processed = await processIntakeIntoCase({
+        draft,
+        files: [],
+        prepareFiles: (caseId) => uploadPendingFiles(user, caseId),
+        user,
+      })
+      await updateConversationalIntakeProcessing(processingSessionId, {
+        status: 'processed',
+        structuredData: processed.structured,
+        caseId: processed.caseId,
+      })
+      setProcessedCaseId(processed.caseId)
       setIntakeSaved(true)
     } catch (error) {
       const message = error instanceof Error ? error.message : ''
+      if (processingSessionId) {
+        await updateConversationalIntakeProcessing(processingSessionId, {
+          status: 'failed',
+          error: message,
+        }).catch(() => undefined)
+      }
       setAuthError(
-        message.includes('storage/')
+        message.toLowerCase().includes('belongs to another user')
+          ? 'This intake is linked to a different account in this browser. Sign in with that account, or close this intake and start a new one.'
+          : message.includes('storage/')
           ? 'Your account is ready, but the files could not be uploaded. Please retry.'
           : message || 'Your intake could not be saved. Please try again.',
       )
@@ -177,8 +226,14 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
       setAuthError('Enter your email address.')
       return
     }
-    if (authPassword.length < 6) {
-      setAuthError('Password must be at least 6 characters.')
+    const passwordError =
+      authMode === 'signup'
+        ? getPasswordPolicyError(authPassword)
+        : authPassword.length < 6
+          ? 'Enter your password.'
+          : null
+    if (passwordError) {
+      setAuthError(passwordError)
       return
     }
 
@@ -233,19 +288,30 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
     }
   }
 
-  const selectPendingFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const selectPendingFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
+    event.target.value = ''
     if (!files.length) return
 
-    setUploadError('')
-    setPendingFiles((current) => {
-      const existing = new Set(current.map((file) => `${file.name}:${file.size}:${file.lastModified}`))
-      return [
-        ...current,
-        ...files.filter((file) => !existing.has(`${file.name}:${file.size}:${file.lastModified}`)),
-      ]
-    })
-    event.target.value = ''
+    const existing = new Set(
+      pendingFiles.map((file) => `${file.name}:${file.size}:${file.lastModified}`),
+    )
+    const nextFiles = [
+      ...pendingFiles,
+      ...files.filter(
+        (file) => !existing.has(`${file.name}:${file.size}:${file.lastModified}`),
+      ),
+    ]
+
+    try {
+      await validateCaseFiles(nextFiles)
+      setUploadError('')
+      setPendingFiles(nextFiles)
+    } catch (error) {
+      setUploadError(
+        error instanceof Error ? error.message : 'One or more attachments are not allowed.',
+      )
+    }
   }
 
   if (isPreparing || showReadyTransition) {
@@ -351,7 +417,7 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
               </div>
               <Link
                 className="realtime-intake__dashboard-link"
-                to="/dashboard"
+                to={processedCaseId ? `/dashboard/cases/${processedCaseId}` : '/dashboard'}
                 onClick={realtime.stop}
               >
                 Go to dashboard
@@ -359,39 +425,27 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
             </div>
           ) : (
             <form className="realtime-intake__auth" onSubmit={submitAuthentication}>
-              <div className="realtime-intake__auth-heading">
-                <div>
-                  <h3>{authMode === 'signup' ? 'Create your account' : 'Sign in to save'}</h3>
-                  <p>Your email stays private and is entered securely here.</p>
-                  {pendingFiles.length > 0 && (
-                    <p>
-                      {pendingFiles.length} pending file{pendingFiles.length === 1 ? '' : 's'} will
-                      upload after authentication.
-                    </p>
-                  )}
-                </div>
-                <div className="realtime-intake__auth-toggle">
-                  <button
-                    type="button"
-                    className={authMode === 'signin' ? 'is-active' : ''}
-                    onClick={() => {
-                      setAuthMode('signin')
-                      setAuthError('')
-                    }}
-                  >
-                    Sign in
-                  </button>
-                  <button
-                    type="button"
-                    className={authMode === 'signup' ? 'is-active' : ''}
-                    onClick={() => {
-                      setAuthMode('signup')
-                      setAuthError('')
-                    }}
-                  >
-                    Create account
-                  </button>
-                </div>
+              <div className="realtime-intake__auth-toggle">
+                <button
+                  type="button"
+                  className={authMode === 'signup' ? 'is-active' : ''}
+                  onClick={() => {
+                    setAuthMode('signup')
+                    setAuthError('')
+                  }}
+                >
+                  Create account
+                </button>
+                <button
+                  type="button"
+                  className={authMode === 'signin' ? 'is-active' : ''}
+                  onClick={() => {
+                    setAuthMode('signin')
+                    setAuthError('')
+                  }}
+                >
+                  Sign in
+                </button>
               </div>
               <SocialAuthButtons
                 disabled={authLoading}
@@ -410,18 +464,21 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
                     required
                   />
                 </label>
-                <label>
-                  <span>Password</span>
-                  <input
-                    type="password"
-                    value={authPassword}
-                    onChange={(event) => setAuthPassword(event.target.value)}
-                    autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
-                    disabled={authLoading}
-                    minLength={6}
-                    required
-                  />
-                </label>
+                <div className="password-field-with-requirements">
+                  <label>
+                    <span>Password</span>
+                    <input
+                      type="password"
+                      value={authPassword}
+                      onChange={(event) => setAuthPassword(event.target.value)}
+                      autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
+                      disabled={authLoading}
+                      minLength={authMode === 'signup' ? PASSWORD_MIN_LENGTH : 6}
+                      required
+                    />
+                  </label>
+                  {authMode === 'signup' && <PasswordRequirements password={authPassword} />}
+                </div>
                 <button
                   className="realtime-intake__auth-submit"
                   type="submit"
@@ -437,6 +494,22 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
           )
         ) : (
         <>
+        {showFileUpload && (
+          <div className="realtime-intake__health-notice">
+            <div>
+              <strong>Health information and privacy notice</strong>
+              <p>{healthInformationNotice}</p>
+            </div>
+            <label>
+              <input
+                type="checkbox"
+                checked={healthNoticeAccepted}
+                onChange={(event) => setHealthNoticeAccepted(event.target.checked)}
+              />
+              <span>I understand and authorize this storage and limited sharing.</span>
+            </label>
+          </div>
+        )}
         {realtime.limitWarning && !realtime.limitReason && (
           <p className="realtime-intake__limit-warning" role="status">
             {realtime.limitWarning}
@@ -453,8 +526,10 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
             aria-label={realtime.isMicrophoneMuted ? 'Turn microphone on' : 'Turn microphone off'}
             title={realtime.isMicrophoneMuted ? 'Turn microphone on' : 'Turn microphone off'}
           >
-            {realtime.isMicrophoneMuted || realtime.status !== 'connected'
-              ? <MicOff aria-hidden="true" />
+            {realtime.status === 'connected' && realtime.isMicrophoneMuted
+              ? <Mic aria-hidden="true" />
+              : realtime.status !== 'connected'
+                ? <MicOff aria-hidden="true" />
               : (
                 <span className="realtime-intake__mic-active-icon" aria-hidden="true">
                   <MicOff />
@@ -469,17 +544,26 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
                 className="realtime-intake__file-input"
                 type="file"
                 multiple
+                accept={ACCEPTED_CASE_FILE_TYPES}
                 onChange={selectPendingFiles}
-                disabled={isUploading}
+                disabled={isUploading || !healthNoticeAccepted}
                 aria-label="Choose files to attach"
               />
               <button
                 className="realtime-intake__attach"
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                aria-label="Attach files"
-                title="Attach files"
+                disabled={isUploading || !healthNoticeAccepted}
+                aria-label={
+                  healthNoticeAccepted
+                    ? 'Attach files'
+                    : 'Accept the health information notice before attaching files'
+                }
+                title={
+                  healthNoticeAccepted
+                    ? 'Attach files'
+                    : 'Accept the health information notice before attaching files'
+                }
               >
                 {isUploading
                   ? <LoaderCircle className="realtime-intake__spinner" aria-hidden="true" />
@@ -497,7 +581,15 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
             placeholder={
               realtime.isResponding
                 ? 'Our agent is responding…'
-                : realtime.status === 'connected' ? 'Type a message…' : 'Connecting…'
+                : showFileUpload
+                  ? 'Optional note about your files…'
+                  : realtime.status === 'connected'
+                    ? 'Type a message…'
+                    : realtime.status === 'error'
+                      ? 'Voice disconnected — try again below'
+                      : realtime.status === 'connecting'
+                        ? 'Connecting…'
+                        : 'Voice session ended'
             }
             disabled={
               realtime.status !== 'connected'
@@ -514,7 +606,7 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
               realtime.status !== 'connected'
               || realtime.isResponding
               || Boolean(realtime.limitReason)
-              || !textInput.trim()
+              || (!textInput.trim() && !showFileUpload)
             }
             aria-label="Send message"
           >

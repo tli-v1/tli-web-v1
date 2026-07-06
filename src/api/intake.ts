@@ -106,6 +106,7 @@ export async function createIncident(incidentData: IntakeRecord): Promise<{ erro
       incidentDate,
       city: stringValue(incidentData.city),
       stateCode: stringValue(incidentData.state_code)?.toUpperCase() || null,
+      locationDetails: stringValue(incidentData.location_details),
     });
     return { error: null };
   } catch (error) {
@@ -116,6 +117,10 @@ export async function createIncident(incidentData: IntakeRecord): Promise<{ erro
 export async function createDamages(damagesData: IntakeRecord): Promise<{ error: string | null }> {
   const medicalBillsUsd =
     currencyValue(damagesData.medical_bills_usd) ?? currencyValue(damagesData.medical_expenses);
+  const propertyDamageUsd =
+    currencyValue(damagesData.property_damage_usd) ?? currencyValue(damagesData.property_damage);
+  const otherExpensesUsd =
+    currencyValue(damagesData.other_expenses_usd) ?? currencyValue(damagesData.other_expenses);
   const daysMissed = numberValue(damagesData.days_missed);
   const hourlyRateUsd = currencyValue(damagesData.hourly_rate_usd);
   const lostWagesUsd =
@@ -126,10 +131,17 @@ export async function createDamages(damagesData: IntakeRecord): Promise<{ error:
   try {
     await createDataConnectDamages({
       caseId: String(damagesData.case_id),
+      injuries: stringValue(damagesData.injuries),
+      treatment: stringValue(damagesData.treatment),
       medicalBillsUsd,
+      propertyDamageUsd,
+      otherExpensesUsd,
       daysMissed,
       hourlyRateUsd,
       lostWagesUsd,
+      emotionalImpact: stringValue(damagesData.emotional_impact),
+      otherDamages: stringValue(damagesData.other_damages),
+      details: stringValue(damagesData.details ?? damagesData.damage_details),
     });
     return { error: null };
   } catch (error) {
@@ -179,6 +191,7 @@ export async function createDocument(documentData: IntakeRecord): Promise<{ erro
       kind: docKindFor(documentData.kind),
       originalFilename: stringValue(documentData.original_filename ?? documentData.file_name),
       storagePath: stringValue(documentData.storage_path),
+      notes: stringValue(documentData.notes),
     });
     return { error: null };
   } catch (error) {

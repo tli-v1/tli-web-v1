@@ -404,4 +404,9 @@ button:active,
     padding: 1.25rem;
   }
 
+  button,
+  .btn {
+    min-height: 44px;
+  }
+
 }

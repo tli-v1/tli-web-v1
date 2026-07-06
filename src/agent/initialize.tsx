@@ -67,6 +67,7 @@ export async function saveConversationalIntakeExchange(
   const response = await persistIntake({
     action: 'exchange',
     sessionId: input.sessionId,
+    deferOwnership: true,
     userMessage: input.userMessage,
     assistantMessage: input.assistantMessage,
     intake: input.intake,
@@ -81,6 +82,17 @@ export async function ensureConversationalIntakeSession(
   const response = await persistIntake({
     action: 'ensure',
     sessionId,
+  })
+  return response.data.sessionId
+}
+
+export async function createAuthenticatedConversationalIntakeSession(
+  sourceSessionId: string,
+): Promise<string> {
+  const response = await persistIntake({
+    action: 'ensure',
+    sessionId: null,
+    sourceSessionId,
   })
   return response.data.sessionId
 }

@@ -12,6 +12,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import type { User, Session, AuthResponse, AuthError } from '../types';
+import { getPasswordPolicyError, PASSWORD_REQUIREMENTS } from '../utils/passwordPolicy';
 
 function mapFirebaseUser(firebaseUser: FirebaseUser): User {
   return {
@@ -111,6 +112,15 @@ export function onAuthStateChange(callback: (user: User | null) => void): () => 
 }
 
 export async function signUp(email: string, password: string): Promise<AuthResponse> {
+  const passwordError = getPasswordPolicyError(password);
+  if (passwordError) {
+    return {
+      user: null,
+      session: null,
+      error: { message: passwordError, code: 'auth/weak-password' },
+    };
+  }
+
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = mapFirebaseUser(userCredential.user);
@@ -133,7 +143,7 @@ export async function signUp(email: string, password: string): Promise<AuthRespo
         message = 'Please enter a valid email address.';
         break;
       case 'auth/weak-password':
-        message = 'Password must be at least 6 characters long.';
+        message = PASSWORD_REQUIREMENTS;
         break;
       case 'auth/operation-not-allowed':
         message = 'Email/password sign up is not enabled. Please contact support.';
@@ -216,6 +226,11 @@ export async function resetPasswordForEmail(
 }
 
 export async function updatePassword(newPassword: string): Promise<{ error: AuthError | null }> {
+  const passwordError = getPasswordPolicyError(newPassword);
+  if (passwordError) {
+    return { error: { message: passwordError, code: 'auth/weak-password' } };
+  }
+
   try {
     const user = auth.currentUser;
     if (!user) {

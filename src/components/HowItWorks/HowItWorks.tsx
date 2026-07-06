@@ -7,7 +7,7 @@ const steps = [
     icon: MessageSquareText,
     title: 'Build your case profile',
     description:
-      'Chat with our agent so we get an idea of what happened. You can finish in one sitting or come back and edit in the dashboard.',
+      'Chat or text with our agent so we get an idea of what happened. You can finish in one sitting or come back and edit in the dashboard.',
   },
   {
     icon: ClipboardList,
