@@ -1,0 +1,16 @@
+{
+  "name": "True Legal Innovations",
+  "short_name": "TLI",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1d3c",
+  "theme_color": "#0f1d3c",
+  "icons": [
+    {
+      "src": "/tli_logo.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
