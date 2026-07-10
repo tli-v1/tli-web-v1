@@ -172,7 +172,8 @@
 .realtime-intake .realtime-intake__attach,
 .realtime-intake .realtime-intake__mic-toggle,
 .realtime-intake .realtime-intake__send,
-.realtime-intake .realtime-intake__retry {
+.realtime-intake .realtime-intake__retry,
+.realtime-intake .realtime-intake__fallback {
   border: 0;
   border-radius: 999px;
   color: inherit;
@@ -704,8 +705,24 @@
 }
 
 .realtime-intake .realtime-intake__retry {
-  margin-left: auto;
   padding: 10px 16px;
+}
+
+.realtime-intake__fallback-actions {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.realtime-intake .realtime-intake__fallback {
+  padding: 10px 16px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 800;
+}
+
+.realtime-intake .realtime-intake__fallback:hover {
+  background: #3b82f6;
 }
 
 @keyframes realtime-intake-spin {
@@ -873,6 +890,16 @@
 
   .realtime-intake__footer-status {
     flex-wrap: wrap;
+  }
+
+  .realtime-intake__fallback-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .realtime-intake .realtime-intake__fallback,
+  .realtime-intake .realtime-intake__retry {
+    flex: 1 1 0;
   }
 
   .realtime-intake__auth-toggle {

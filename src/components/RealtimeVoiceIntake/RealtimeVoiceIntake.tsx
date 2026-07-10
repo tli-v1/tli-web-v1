@@ -30,11 +30,15 @@ import './RealtimeVoiceIntake.css'
 
 interface RealtimeVoiceIntakeProps {
   onClose: () => void
+  onFallbackToText?: () => void
 }
 
 type AuthMode = 'signin' | 'signup'
 
-export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProps) {
+export default function RealtimeVoiceIntake({
+  onClose,
+  onFallbackToText,
+}: RealtimeVoiceIntakeProps) {
   const realtime = useRealtimeVoice()
   const endRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -88,6 +92,11 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
   const close = () => {
     realtime.stop()
     onClose()
+  }
+
+  const continueByText = () => {
+    realtime.stop()
+    onFallbackToText?.()
   }
 
   const isPreparing = (
@@ -664,13 +673,22 @@ export default function RealtimeVoiceIntake({ onClose }: RealtimeVoiceIntakeProp
           )}
           {uploadError && <p className="realtime-intake__upload-error">{uploadError}</p>}
             {realtime.status === 'error' && realtime.supported && (
-              <button
-                className="realtime-intake__retry"
-                type="button"
-                onClick={() => void realtime.start()}
-              >
-                Try again
-              </button>
+              <div className="realtime-intake__fallback-actions">
+                <button
+                  className="realtime-intake__fallback"
+                  type="button"
+                  onClick={continueByText}
+                >
+                  Continue by text
+                </button>
+                <button
+                  className="realtime-intake__retry"
+                  type="button"
+                  onClick={() => void realtime.start()}
+                >
+                  Try voice again
+                </button>
+              </div>
             )}
           </div>
         )}

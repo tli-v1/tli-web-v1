@@ -16,6 +16,8 @@ const WARNING_USER_TURNS = 16
 const WARNING_TOTAL_USER_CHARACTERS = 4800
 const CONNECTION_TIMEOUT_MS = 20 * 1000
 const DISCONNECT_GRACE_MS = 5 * 1000
+const VOICE_UNAVAILABLE_MESSAGE =
+  'Voice is temporarily unavailable. You can continue this intake by text.'
 const OFF_TOPIC_ENDING =
   'I’m going to pause this intake because the responses are not related to the questions.'
 const REALTIME_GUARDRAIL_INSTRUCTIONS = `Track consecutive answers that do not plausibly answer your current intake question.
@@ -75,6 +77,26 @@ export function useRealtimeVoice() {
   const userTurnCountRef = useRef(0)
   const totalUserCharactersRef = useRef(0)
   const pendingInputLockRef = useRef('')
+
+  const publicConnectionError = useCallback((message: string) => {
+    const normalized = message.toLowerCase()
+    if (
+      normalized.includes('openai')
+      || normalized.includes('api key')
+      || normalized.includes('credential')
+      || normalized.includes('client secret')
+      || normalized.includes('quota')
+      || normalized.includes('rate limit')
+      || normalized.includes('realtime')
+      || normalized.includes('https callable')
+      || normalized.includes('internal')
+      || message.trim().startsWith('{')
+    ) {
+      return VOICE_UNAVAILABLE_MESSAGE
+    }
+
+    return message
+  }, [])
 
   const persistMessage = useCallback(async (
     role: RealtimeVoiceMessage['role'],
@@ -379,7 +401,7 @@ export function useRealtimeVoice() {
       if (connectionAttempt !== connectionAttemptRef.current) return
       stop()
       setStatus('error')
-      setError(message)
+      setError(publicConnectionError(message))
     }
 
     connectionTimerRef.current = window.setTimeout(() => {
@@ -569,7 +591,7 @@ export function useRealtimeVoice() {
           : 'The voice connection timed out. Check your network and try again.',
       )
     }
-  }, [ensureSession, handleServerEvent, lockUserInput, stop])
+  }, [ensureSession, handleServerEvent, lockUserInput, publicConnectionError, stop])
 
   useEffect(() => stop, [stop])
 

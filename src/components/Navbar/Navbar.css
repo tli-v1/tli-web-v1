@@ -142,14 +142,14 @@
   isolation: isolate;
   overflow: hidden;
   border-radius: 999px;
-  border: 1px solid rgba(226, 232, 240, 0.58);
+  border: 1px solid rgba(205, 225, 255, 0.72);
   background:
-    linear-gradient(180deg, rgba(13, 29, 63, 0.92), rgba(7, 18, 43, 0.96));
-  color: rgba(248, 251, 255, 0.94);
+    linear-gradient(145deg, rgba(59, 112, 190, 0.96), rgba(36, 75, 140, 0.98));
+  color: #f8fbff;
   padding: 0.56rem 1.25rem;
   font-weight: 700;
   box-shadow:
-    0 12px 24px rgba(2, 8, 28, 0.18),
+    0 12px 24px rgba(12, 45, 96, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.22),
     inset 0 -1px 0 rgba(255, 255, 255, 0.08);
   transition: border-color 150ms ease, box-shadow 150ms ease, filter 150ms ease, transform 150ms ease;
@@ -171,12 +171,12 @@
 .nav-intake:hover {
   border-color: rgba(255, 255, 255, 0.82);
   box-shadow:
-    0 14px 28px rgba(2, 8, 28, 0.2),
+    0 14px 28px rgba(12, 45, 96, 0.24),
     0 0 0 1px rgba(255, 255, 255, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.32),
     inset 0 -1px 0 rgba(255, 255, 255, 0.12);
   color: #fff;
-  filter: brightness(1.08);
+  filter: brightness(1.1) saturate(1.04);
   transform: translateY(-1px);
 }
 

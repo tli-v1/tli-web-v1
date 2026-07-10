@@ -114,7 +114,7 @@ function Landing() {
           <span className="hero-mode-helper">
             {intakeMode === 'voice'
               ? 'Tap to start · Naturally converse with our agent'
-              : "Tap to start · Best for silence if you would prefer to type / text"}
+              : "Tap to start · Best for silent texting"}
           </span>
         </div>
       </section>
@@ -134,6 +134,10 @@ function Landing() {
           />
           {intakeMode === 'voice' ? (
             <RealtimeVoiceIntake
+              onFallbackToText={() => {
+                setIntakeMode('text')
+                setIsIntakeLaunching(false)
+              }}
               onClose={() => {
                 setIsIntakeOpen(false)
                 setIsIntakeLaunching(false)

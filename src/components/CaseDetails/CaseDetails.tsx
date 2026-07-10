@@ -35,6 +35,7 @@ import {
 } from '../../storage/fileValidation'
 import { uploadFile, createSignedUrl, removeFiles } from '../../storage/fileUpload'
 import { normalizeStoragePath } from '../../storage/paths'
+import { formatDisplayDate } from '../../utils/formatDate'
 import './CaseDetails.css'
 
 type CaseEditSection = 'all' | 'overview' | 'damages' | 'parties' | 'contact' | 'documents'
@@ -48,19 +49,6 @@ const editSectionLabels: Record<CaseEditSection, string> = {
   parties: 'people and organizations',
   contact: 'primary contact',
   documents: 'case file details',
-}
-
-const formatDate = (iso, fallback = '—') => {
-  if (!iso) return fallback
-  try {
-    return new Date(iso).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
-  } catch {
-    return fallback
-  }
 }
 
 const formatCurrency = (value) => {
@@ -559,7 +547,7 @@ function CaseDetails() {
                 <p className="case-eyebrow">Case workspace</p>
                 <h1>{location || 'Submitted case'}</h1>
                 <p>
-                  Submitted {formatDate(caseSummary.created_at)} · Case #
+                  Submitted {formatDisplayDate(caseSummary.created_at)} · Case #
                   {caseSummary.case_id.slice(0, 8).toUpperCase()}
                 </p>
               </div>
@@ -570,7 +558,7 @@ function CaseDetails() {
                 </div>
                 <div>
                   <span>Incident date</span>
-                  <strong>{formatDate(caseSummary.incident_date)}</strong>
+                  <strong>{formatDisplayDate(caseSummary.incident_date)}</strong>
                 </div>
                 <div>
                   <span>Files</span>
@@ -1103,12 +1091,12 @@ function CaseDetails() {
                     <div>
                       <CalendarDays aria-hidden="true" />
                       <span>Incident date</span>
-                      <strong>{formatDate(caseSummary.incident_date, 'Not provided')}</strong>
+                      <strong>{formatDisplayDate(caseSummary.incident_date, 'Not provided')}</strong>
                     </div>
                     <div>
                       <Clock3 aria-hidden="true" />
                       <span>Last updated</span>
-                      <strong>{formatDate(caseSummary.updated_at)}</strong>
+                      <strong>{formatDisplayDate(caseSummary.updated_at)}</strong>
                     </div>
                   </div>
                 </section>
@@ -1268,7 +1256,7 @@ function CaseDetails() {
                           <div>
                             <strong>{doc.original_filename || 'Uploaded file'}</strong>
                             <span>
-                              {formatDocumentKind(doc.kind)} · Uploaded {formatDate(doc.uploaded_at)}
+                              {formatDocumentKind(doc.kind)} · Uploaded {formatDisplayDate(doc.uploaded_at)}
                             </span>
                             {doc.notes && <p className="case-file__notes">{doc.notes}</p>}
                           </div>
@@ -1379,7 +1367,7 @@ function CaseDetails() {
                       <article key={agreement.id} className="agreement-row">
                         <div>
                           <strong>{file?.file_name || 'Agreement file'}</strong>
-                          <span>Submitted {formatDate(agreement.created_at)}</span>
+                          <span>Submitted {formatDisplayDate(agreement.created_at)}</span>
                           {agreement.message && (
                             <p className={expandedSections.agreements ? 'is-expanded' : ''}>
                               {agreement.message}
@@ -1448,7 +1436,7 @@ function CaseDetails() {
                               <span>
                                 {formatDocumentKind(doc.kind)}
                                 {' · Uploaded '}
-                                {formatDate(doc.uploaded_at)}
+                                {formatDisplayDate(doc.uploaded_at)}
                               </span>
                               {doc.notes && <p className="case-file__notes">{doc.notes}</p>}
                             </div>

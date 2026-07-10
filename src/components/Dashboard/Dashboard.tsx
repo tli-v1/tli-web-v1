@@ -15,6 +15,7 @@ import {
   getPasswordPolicyError,
   PASSWORD_MIN_LENGTH,
 } from '../../utils/passwordPolicy'
+import { formatDisplayDate } from '../../utils/formatDate'
 import { getUserProfile } from '../../api/userProfile'
 import type { User, CaseSummary } from '../../types'
 import SocialAuthButtons, {
@@ -43,19 +44,6 @@ function Dashboard() {
   const [casePage, setCasePage] = useState(1)
   const [caseTotal, setCaseTotal] = useState(0)
   const [profileName, setProfileName] = useState('')
-
-  const formatDate = (iso: string | null | undefined): string => {
-    if (!iso) return '—'
-    try {
-      return new Date(iso).toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      })
-    } catch {
-      return '—'
-    }
-  }
 
   useEffect(() => {
     let isMounted = true
@@ -424,7 +412,7 @@ function Dashboard() {
                             Incident · {location}
                           </Link>
                         </td>
-                        <td data-label="Submitted">{formatDate(item.created_at)}</td>
+                        <td data-label="Submitted">{formatDisplayDate(item.created_at)}</td>
                         <td data-label="Documents">{item.doc_count}</td>
                         <td data-label="Agreements">{item.agreement_count}</td>
                         <td data-label="Status"><span className="status-pill">{item.status}</span></td>
