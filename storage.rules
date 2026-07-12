@@ -29,16 +29,32 @@ service firebase.storage {
         || metadataMatchesUser('userId');
     }
 
+    function isSafeCaseAttachment(fileName) {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 20 * 1024 * 1024
+        && fileName.matches('.*\\.(pdf|png|jpg|jpeg|heic|heif|doc|docx|txt)$')
+        && request.resource.contentType.matches(
+          '^(application/pdf|image/png|image/jpeg|image/heic|image/heif|application/msword|application/vnd\\.openxmlformats-officedocument\\.wordprocessingml\\.document|text/plain)$'
+        );
+    }
+
     match /case-docs/{userId}/{caseId}/{fileName} {
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isSafeCaseAttachment(fileName);
+      allow delete: if isOwner(userId);
     }
 
     match /case-docs/{userId}/{fileName} {
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isSafeCaseAttachment(fileName);
+      allow delete: if isOwner(userId);
     }
 
     match /conversational-intakes/{userId}/{intakeId}/{fileName} {
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isSafeCaseAttachment(fileName);
+      allow delete: if isOwner(userId);
     }
 
     match /lawyer-client-agreements/{ownerUserId}/{caseId}/{fileName} {

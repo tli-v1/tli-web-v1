@@ -17,6 +17,12 @@ import {
 import { useRealtimeVoice } from '../../hooks/useRealtimeVoice'
 import { healthInformationNotice } from '../../intake/healthInformationNotice'
 import {
+  trackAccountAuth,
+  trackCaseSubmitted,
+  trackFileSelected,
+  trackIntakeCompleted,
+} from '../../analytics/googleTags'
+import {
   ACCEPTED_CASE_FILE_TYPES,
   validateCaseFiles,
 } from '../../storage/fileValidation'
@@ -206,6 +212,10 @@ export default function RealtimeVoiceIntake({
       })
       setProcessedCaseId(processed.caseId)
       setIntakeSaved(true)
+      trackIntakeCompleted('voice')
+      trackCaseSubmitted('voice', {
+        fileCount: pendingFiles.length,
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : ''
       if (processingSessionId) {
@@ -265,6 +275,11 @@ export default function RealtimeVoiceIntake({
       }
 
       setAuthPassword('')
+      trackAccountAuth(
+        authMode === 'signup' ? 'created' : 'signed_in',
+        'voice_intake',
+        'email',
+      )
       await finalizeIntake(response.user)
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Authentication failed.')
@@ -288,6 +303,7 @@ export default function RealtimeVoiceIntake({
         throw new Error('Authentication completed without a user account.')
       }
 
+      trackAccountAuth('signed_in', 'voice_intake', provider)
       await finalizeIntake(response.user)
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Authentication failed.')
@@ -316,6 +332,7 @@ export default function RealtimeVoiceIntake({
       await validateCaseFiles(nextFiles)
       setUploadError('')
       setPendingFiles(nextFiles)
+      trackFileSelected('voice_intake', nextFiles.length)
     } catch (error) {
       setUploadError(
         error instanceof Error ? error.message : 'One or more attachments are not allowed.',

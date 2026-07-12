@@ -43,13 +43,17 @@ Collect in this exact order. Do not skip ahead:
 4. People and organizations involved.
 5. Optional insurance, policy, and claim information.
 6. Injuries, treatment, expenses, property damage, missed work, lost income, emotional effects, and other losses.
-7. One generic optional file-upload step for any relevant documents or evidence. This must come only after steps 1 through 6 are addressed. Ask once whether the user wants to upload any files, such as police or incident reports, medical records or bills, photos, videos, insurance documents, receipts, or correspondence. Do not separate files into categories, ask for each type individually, or revisit file uploads after this step.
-8. Name, optional phone, and preferred contact method. Do not ask for an email address in conversation; account email is collected by the secure sign-in form after the intake.
+7. One generic optional file-upload step for any relevant documents or evidence. This must come only after steps 1 through 6 are addressed. Ask once whether the user wants to upload any files, such as police or incident reports, medical records or bills, photos, videos, insurance documents, receipts, or correspondence. Explain that selected files remain pending and are securely submitted only after the user signs in or creates an account at the end. Tell the user to review and accept the health-information authorization shown beside the attachment control before selecting files. Do not separate files into categories, ask for each type individually, or revisit file uploads after this step.
+8. Contact details, using separate focused questions in this order:
+   a. Ask for the user's full name.
+   b. Explicitly ask: "What is the best phone number to reach you?" Ask this even if the user prefers email. Accept that they may decline or not know it.
+   c. Ask whether they prefer email, a phone call, or a text message.
+   Do not ask for an email address in conversation; account email is collected by the secure sign-in form after the intake. Do not treat a preferred contact method as a substitute for asking for the phone number.
 9. Consent to store the intake and make contact. If health information or documents are involved, ask for authorization for secure storage and limited sharing with participating attorneys for intake review and attorney matching.
 
 Do not expose your internal checklist. If the user changes an answer, retain the latest version. For immediate danger, advise contacting emergency services. For urgent deadlines, active court matters, criminal exposure, or imminent legal consequences, recommend promptly contacting a licensed attorney.
 
-For the file-upload step, say that the attachment button is available below. Accept one or multiple files together, and continue if the user has no files or wants to upload them later.
+For the file-upload step, say that the attachment button and health-information authorization are available below. Accept one or multiple files together, explain that they will be submitted at the end after authentication, and continue if the user has no files or wants to upload them later.
 
 When all topics are addressed, say exactly: "Your intake is complete and ready to save. Please use the secure form below to sign in or create an account." Do not ask another question and do not ask the user to speak their email address. Do not read the full intake back unless asked.`;
 
@@ -83,6 +87,10 @@ export const persistConversationalIntake = onCall(
       ? conversationalIntakes.doc(providedSessionId)
       : conversationalIntakes.doc();
     const userId = request.auth?.uid ?? null;
+    const deferOwnership = request.data?.deferOwnership === true;
+    const sourceSessionId = typeof request.data?.sourceSessionId === 'string'
+      ? request.data.sourceSessionId.trim()
+      : '';
 
     if (action === 'ensure') {
       const sessionSnapshot = await sessionRef.get();
@@ -98,10 +106,35 @@ export const persistConversationalIntake = onCall(
         agent: 'conversational-intake',
         intakeStatus: 'in_progress',
         rawAnswers: {},
-        userId: storedUserId ?? userId,
+        userId: storedUserId ?? (deferOwnership ? null : userId),
+        ...(sourceSessionId ? {sourceSessionId} : {}),
         createdAt: sessionSnapshot.exists
           ? sessionSnapshot.data()?.createdAt ?? admin.firestore.FieldValue.serverTimestamp()
           : admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+      return {sessionId: sessionRef.id};
+    }
+
+    if (action === 'claim') {
+      if (!userId) {
+        throw new HttpsError('unauthenticated', 'Sign in before saving this intake.');
+      }
+
+      const sessionSnapshot = await sessionRef.get();
+      if (!sessionSnapshot.exists) {
+        throw new HttpsError('not-found', 'This intake session could not be found.');
+      }
+
+      const storedUserId = sessionSnapshot.data()?.userId;
+      const wasExplicitlyClaimed = Boolean(sessionSnapshot.data()?.claimedAt);
+      if (storedUserId && storedUserId !== userId && wasExplicitlyClaimed) {
+        throw new HttpsError('permission-denied', 'This intake belongs to another user.');
+      }
+
+      await sessionRef.set({
+        userId,
+        claimedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, {merge: true});
       return {sessionId: sessionRef.id};
@@ -122,7 +155,7 @@ export const persistConversationalIntake = onCall(
         displayName: 'Conversational Intake',
         agent: 'conversational-intake',
         intakeStatus: intake?.complete === true ? 'complete' : 'in_progress',
-        userId,
+        ...(!deferOwnership ? {userId} : {}),
         lastMessage: assistantMessage.content,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -176,7 +209,7 @@ export const persistConversationalIntake = onCall(
         displayName: 'Conversational Intake',
         agent: 'openai-realtime-minerva',
         intakeStatus: 'in_progress',
-        userId: storedUserId ?? userId,
+        userId: storedUserId ?? (deferOwnership ? null : userId),
         lastMessage: message.content,
         createdAt: sessionSnapshot.exists
           ? sessionSnapshot.data()?.createdAt ?? admin.firestore.FieldValue.serverTimestamp()
@@ -291,15 +324,14 @@ export const createMinervaRealtimeSession = onCall(
               transcription: {
                 model: 'gpt-realtime-whisper',
                 language: 'en',
+                delay: 'medium',
               },
               noise_reduction: {
                 type: 'near_field',
               },
               turn_detection: {
-                type: 'server_vad',
-                threshold: 0.75,
-                prefix_padding_ms: 300,
-                silence_duration_ms: 700,
+                type: 'semantic_vad',
+                eagerness: 'low',
                 create_response: false,
                 interrupt_response: false,
               },

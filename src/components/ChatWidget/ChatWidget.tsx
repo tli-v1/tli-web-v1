@@ -56,6 +56,12 @@ import { useSpeechOutput } from '../../hooks/useSpeechOutput'
 import { useVoiceInput } from '../../hooks/useVoiceInput'
 import { healthInformationNotice } from '../../intake/healthInformationNotice'
 import {
+  trackAccountAuth,
+  trackCaseSubmitted,
+  trackFileSelected,
+  trackIntakeCompleted,
+} from '../../analytics/googleTags'
+import {
   ACCEPTED_CASE_FILE_TYPES,
   validateCaseFiles,
 } from '../../storage/fileValidation'
@@ -345,6 +351,9 @@ export function ChatWidget({
         caseId: processed.caseId,
       })
       setProcessedCaseId(processed.caseId)
+      trackCaseSubmitted('text', {
+        fileCount: attachedFiles.length + pendingFiles.length,
+      })
       appendAssistantMessage(
         'Your intake has been processed and added to your dashboard.',
       )
@@ -405,6 +414,7 @@ export function ChatWidget({
       await validateCaseFiles(nextFiles)
       setAttachmentError('')
       setPendingFiles(nextFiles)
+      trackFileSelected('text_intake', nextFiles.length)
     } catch (error) {
       setAttachmentError(
         error instanceof Error ? error.message : 'One or more attachments are not allowed.',
@@ -450,6 +460,11 @@ export function ChatWidget({
       }
 
       setAuthenticatedUser(response.user)
+      trackAccountAuth(
+        authMode === 'signup' ? 'created' : 'signed_in',
+        'text_intake',
+        'email',
+      )
       appendAssistantMessage(
         authMode === 'signup'
           ? 'Your account is ready. I’m processing the intake for your dashboard now.'
@@ -479,6 +494,7 @@ export function ChatWidget({
       }
 
       setAuthenticatedUser(response.user)
+      trackAccountAuth('signed_in', 'text_intake', provider)
       appendAssistantMessage(
         'You’re signed in. I’m processing the intake for your dashboard now.',
       )
@@ -533,6 +549,7 @@ export function ChatWidget({
     })
 
     if (nextStep === null && savedSessionId) {
+      trackIntakeCompleted('text')
       if (activeUser) {
         appendAssistantMessage(
           'I’m processing your intake now and preparing it for your dashboard.',

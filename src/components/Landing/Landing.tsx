@@ -5,6 +5,7 @@ import { ChatWidget } from '../ChatWidget/ChatWidget'
 import Footer from '../Footer'
 import HowItWorks from '../HowItWorks'
 import { getSession, onAuthStateChange } from '../../api/auth'
+import { trackGoogleEvent, trackIntakeStarted } from '../../analytics/googleTags'
 import type { User } from '../../types'
 import './Landing.css'
 
@@ -42,6 +43,7 @@ function Landing() {
     setIsIntakeLaunching(true)
     launchTimerRef.current = window.setTimeout(() => {
       launchTimerRef.current = null
+      trackIntakeStarted('voice')
       setIsIntakeOpen(true)
       setIsIntakeLaunching(false)
     }, 560)
@@ -53,6 +55,7 @@ function Landing() {
     setIsIntakeLaunching(true)
     launchTimerRef.current = window.setTimeout(() => {
       launchTimerRef.current = null
+      trackIntakeStarted('text')
       setIsIntakeOpen(true)
       setIsIntakeLaunching(false)
     }, 560)
@@ -135,6 +138,7 @@ function Landing() {
           {intakeMode === 'voice' ? (
             <RealtimeVoiceIntake
               onFallbackToText={() => {
+                trackGoogleEvent('voice_fallback_to_text')
                 setIntakeMode('text')
                 setIsIntakeLaunching(false)
               }}

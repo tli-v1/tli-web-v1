@@ -16,6 +16,7 @@ import {
   PASSWORD_MIN_LENGTH,
 } from '../../utils/passwordPolicy'
 import { formatDisplayDate } from '../../utils/formatDate'
+import { trackAccountAuth } from '../../analytics/googleTags'
 import { getUserProfile } from '../../api/userProfile'
 import type { User, CaseSummary } from '../../types'
 import SocialAuthButtons, {
@@ -166,6 +167,7 @@ function Dashboard() {
         if (error) throw error
 
         setSessionUser(user)
+        trackAccountAuth('created', 'dashboard', 'email')
         setAuthMessage(
           session
             ? 'Account created and signed in.'
@@ -175,6 +177,7 @@ function Dashboard() {
         const { user, error } = await signInWithPassword(email, authPassword)
         if (error) throw error
         setSessionUser(user)
+        trackAccountAuth('signed_in', 'dashboard', 'email')
         setAuthMessage('Signed in successfully.')
       }
       setAuthPassword('')
@@ -220,6 +223,7 @@ function Dashboard() {
       if (!response.user) throw new Error('Authentication completed without a user account.')
 
       setSessionUser(response.user)
+      trackAccountAuth('signed_in', 'dashboard', provider)
       setAuthMessage('Signed in successfully.')
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Authentication failed.')

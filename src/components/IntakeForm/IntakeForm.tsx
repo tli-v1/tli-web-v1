@@ -15,6 +15,13 @@ import {
   getPasswordPolicyError,
   PASSWORD_MIN_LENGTH,
 } from '../../utils/passwordPolicy'
+import {
+  trackAccountAuth,
+  trackCaseSubmitted,
+  trackFileSelected,
+  trackIntakeCompleted,
+  trackIntakeStarted,
+} from '../../analytics/googleTags'
 import { getStateCodes, type StateCode } from '../../api/stateCodes'
 import { ensureUserProfile } from '../../api/userProfile'
 import { createCase, deleteCase, createIncident, createDamages, createCaseContact, createParties, createDocument } from '../../api/intake'
@@ -268,6 +275,7 @@ function IntakeForm() {
         caseFiles: files.map((file) => file.name).join(', '),
       }))
       setSelectedFiles(files)
+      trackFileSelected('form_intake', files.length)
       setSubmitError('')
     } catch (error) {
       setFormData((prev) => ({ ...prev, caseFiles: '' }))
@@ -383,10 +391,12 @@ function IntakeForm() {
             ? 'Account created and signed in.'
             : 'Account created! Please confirm via email to finish signing in.'
         )
+        trackAccountAuth('created', 'form_intake', 'email')
       } else {
         const { error } = await signInWithPassword(email, authPassword)
         if (error) throw error
         setAuthMessage('Signed in successfully.')
+        trackAccountAuth('signed_in', 'form_intake', 'email')
       }
       setAuthPassword('')
     } catch (error) {
@@ -436,6 +446,7 @@ function IntakeForm() {
       setSessionUser(response.user)
       setAuthPassword('')
       setAuthMessage('Signed in successfully.')
+      trackAccountAuth('signed_in', 'form_intake', provider)
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Authentication failed.')
     } finally {
@@ -486,6 +497,9 @@ function IntakeForm() {
   }
 
   const goToStep = (nextStep) => {
+    if (currentStep === 0 && nextStep === 1) {
+      trackIntakeStarted('form')
+    }
     setCurrentStep(nextStep)
     setSubmitted(false)
   }
@@ -592,6 +606,10 @@ function IntakeForm() {
 
       setSubmitted(true)
       setSubmittedCaseId(createdCaseId)
+      trackIntakeCompleted('form')
+      trackCaseSubmitted('form', {
+        fileCount: selectedFiles.length,
+      })
       setFormData({ ...initialFormData })
       setSelectedFiles([])
       setCurrentStep(0)
