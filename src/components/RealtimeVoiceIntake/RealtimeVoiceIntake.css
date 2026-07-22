@@ -952,7 +952,7 @@
   }
 
   .realtime-intake__header {
-    min-height: 92px;
+    min-height: 108px;
     padding:
       max(16px, env(safe-area-inset-top))
       16px
@@ -968,6 +968,11 @@
     font-size: 0.78rem;
   }
 
+  .realtime-intake__edit-disclaimer {
+    margin-top: 5px;
+    font-size: 0.72rem;
+  }
+
   .realtime-intake .realtime-intake__close {
     flex-basis: 44px;
     width: 44px;
@@ -978,6 +983,30 @@
 
   .realtime-intake__message {
     max-width: 92%;
+  }
+
+  .realtime-intake__message--editable:hover,
+  .realtime-intake__message--editable:focus-visible {
+    transform: none;
+  }
+
+  .realtime-intake__message-edit textarea {
+    width: min(100%, calc(100vw - 82px));
+    min-height: 96px;
+  }
+
+  .realtime-intake__message-edit-actions {
+    flex-wrap: wrap;
+  }
+
+  .realtime-intake__message-edit-actions button {
+    min-height: 36px;
+  }
+
+  .realtime-intake__typing {
+    min-width: 62px;
+    min-height: 42px;
+    padding-inline: 16px;
   }
 
   .realtime-intake__messages {
