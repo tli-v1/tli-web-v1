@@ -194,3 +194,8 @@ export interface SignedUrlResponse {
   url: string | null;
   error: string | null;
 }
+
+export interface SecureObjectUrlResponse {
+  url: string | null;
+  error: string | null;
+}

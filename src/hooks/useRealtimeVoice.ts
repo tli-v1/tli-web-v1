@@ -41,12 +41,22 @@ export interface RealtimeVoiceMessage {
 interface RealtimeServerEvent {
   type?: string
   event_id?: string
+  response_id?: string
   item_id?: string
   transcript?: string
   text?: string
+  response?: {
+    id?: string
+    status?: string
+  }
   error?: {
     message?: string
   }
+}
+
+interface PendingAssistantMessage {
+  eventId: string
+  content: string
 }
 
 export function useRealtimeVoice() {
@@ -55,6 +65,7 @@ export function useRealtimeVoice() {
   const [error, setError] = useState('')
   const [isMicrophoneMuted, setIsMicrophoneMuted] = useState(false)
   const [isResponding, setIsResponding] = useState(false)
+  const [isProcessingUserInput, setIsProcessingUserInput] = useState(false)
   const [hasAssistantStarted, setHasAssistantStarted] = useState(false)
   const [limitReason, setLimitReason] = useState('')
   const [limitWarning, setLimitWarning] = useState('')
@@ -77,6 +88,8 @@ export function useRealtimeVoice() {
   const userTurnCountRef = useRef(0)
   const totalUserCharactersRef = useRef(0)
   const pendingInputLockRef = useRef('')
+  const pendingAssistantMessagesRef = useRef(new Map<string, PendingAssistantMessage[]>())
+  const responsePausedLiveMicrophoneRef = useRef(false)
 
   const publicConnectionError = useCallback((message: string) => {
     const normalized = message.toLowerCase()
@@ -122,12 +135,26 @@ export function useRealtimeVoice() {
     }
   }, [])
 
+  const editMessage = useCallback((messageId: string, content: string) => {
+    const cleanContent = content.replace(/\s+/g, ' ').trim()
+    if (!cleanContent) return false
+
+    setMessages((current) => current.map((message) => (
+      message.id === messageId && message.role === 'user'
+        ? { ...message, content: cleanContent }
+        : message
+    )))
+    return true
+  }, [])
+
   const stop = useCallback(() => {
     connectionAttemptRef.current += 1
     startingRef.current = false
     connectedRef.current = false
     respondingRef.current = false
+    responsePausedLiveMicrophoneRef.current = false
     setIsResponding(false)
+    setIsProcessingUserInput(false)
     if (sessionTimerRef.current !== null) {
       window.clearTimeout(sessionTimerRef.current)
       sessionTimerRef.current = null
@@ -146,6 +173,7 @@ export function useRealtimeVoice() {
     }
     connectionAbortRef.current?.abort()
     connectionAbortRef.current = null
+    pendingAssistantMessagesRef.current.clear()
     dataChannelRef.current?.close()
     dataChannelRef.current = null
     peerRef.current?.close()
@@ -232,6 +260,48 @@ export function useRealtimeVoice() {
     setIsMicrophoneMuted(true)
   }, [])
 
+  const queueAssistantMessage = useCallback((
+    event: RealtimeServerEvent,
+    content: string,
+  ) => {
+    const cleanContent = content.replace(/\s+/g, ' ').trim()
+    if (!cleanContent) return
+
+    const responseId = event.response_id || event.response?.id || event.item_id || event.event_id
+    if (!responseId) return
+
+    const eventId = `assistant-${event.item_id ?? event.event_id ?? crypto.randomUUID()}`
+    const existing = pendingAssistantMessagesRef.current.get(responseId) ?? []
+    pendingAssistantMessagesRef.current.set(responseId, [
+      ...existing.filter((message) => message.eventId !== eventId),
+      { eventId, content: cleanContent },
+    ])
+  }, [])
+
+  const finalizeAssistantMessages = useCallback((
+    responseId: string | undefined,
+    shouldPersist: boolean,
+  ) => {
+    if (!responseId) return
+
+    const queued = pendingAssistantMessagesRef.current.get(responseId) ?? []
+    pendingAssistantMessagesRef.current.delete(responseId)
+    if (!shouldPersist) return
+
+    for (const message of queued) {
+      if (INTAKE_COMPLETE_PATTERN.test(message.content)) {
+        setIsIntakeComplete(true)
+        muteMicrophone()
+      }
+      if (message.content.includes(OFF_TOPIC_ENDING)) {
+        window.setTimeout(() => {
+          lockUserInput('This intake was paused after three unrelated responses.')
+        }, 1200)
+      }
+      void persistMessage('assistant', message.content, message.eventId)
+    }
+  }, [lockUserInput, muteMicrophone, persistMessage])
+
   const sendTextMessage = useCallback((
     content: string,
     options: { preserveMicrophone?: boolean } = {},
@@ -280,10 +350,24 @@ export function useRealtimeVoice() {
   }, [limitReason, persistMessage, registerUserInput])
 
   const handleServerEvent = useCallback((event: RealtimeServerEvent) => {
+    if (event.type === 'input_audio_buffer.speech_started') {
+      setIsProcessingUserInput(true)
+      return
+    }
+
+    if (
+      event.type === 'input_audio_buffer.speech_stopped'
+      || event.type === 'conversation.item.input_audio_transcription.delta'
+    ) {
+      setIsProcessingUserInput(true)
+      return
+    }
+
     if (
       event.type === 'conversation.item.input_audio_transcription.completed'
       && event.transcript
     ) {
+      setIsProcessingUserInput(false)
       const cleanTranscript = normalizeVoiceTranscript(event.transcript)
       const dataChannel = dataChannelRef.current
       if (!cleanTranscript || !registerUserInput(cleanTranscript)) return
@@ -305,21 +389,17 @@ export function useRealtimeVoice() {
       return
     }
 
+    if (
+      event.type === 'conversation.item.input_audio_transcription.completed'
+      || event.type === 'conversation.item.input_audio_transcription.failed'
+    ) {
+      setIsProcessingUserInput(false)
+      return
+    }
+
     if (event.type === 'response.output_audio_transcript.done' && event.transcript) {
-      if (INTAKE_COMPLETE_PATTERN.test(event.transcript)) {
-        setIsIntakeComplete(true)
-        muteMicrophone()
-      }
-      if (event.transcript.includes(OFF_TOPIC_ENDING)) {
-        window.setTimeout(() => {
-          lockUserInput('This intake was paused after three unrelated responses.')
-        }, 1200)
-      }
-      void persistMessage(
-        'assistant',
-        event.transcript,
-        `assistant-${event.item_id ?? crypto.randomUUID()}`,
-      )
+      setHasAssistantStarted(true)
+      queueAssistantMessage(event, event.transcript)
       return
     }
 
@@ -333,27 +413,42 @@ export function useRealtimeVoice() {
 
     if (event.type === 'response.output_text.done' && event.text) {
       setHasAssistantStarted(true)
-      if (INTAKE_COMPLETE_PATTERN.test(event.text)) {
-        setIsIntakeComplete(true)
-        muteMicrophone()
-      }
-      void persistMessage(
-        'assistant',
-        event.text,
-        `assistant-${event.item_id ?? crypto.randomUUID()}`,
-      )
+      queueAssistantMessage(event, event.text)
       return
     }
 
     if (event.type === 'response.created') {
       respondingRef.current = true
       setIsResponding(true)
+      const audioTracks = streamRef.current?.getAudioTracks() ?? []
+      responsePausedLiveMicrophoneRef.current = audioTracks.some((track) => track.enabled)
+      if (responsePausedLiveMicrophoneRef.current) {
+        audioTracks.forEach((track) => {
+          track.enabled = false
+        })
+        setIsMicrophoneMuted(true)
+      }
       return
     }
 
     if (event.type === 'response.done') {
       respondingRef.current = false
       setIsResponding(false)
+      finalizeAssistantMessages(
+        event.response?.id || event.response_id,
+        event.response?.status === 'completed',
+      )
+      if (
+        responsePausedLiveMicrophoneRef.current
+        && !pendingInputLockRef.current
+        && !limitReason
+      ) {
+        streamRef.current?.getAudioTracks().forEach((track) => {
+          track.enabled = true
+        })
+        setIsMicrophoneMuted(false)
+      }
+      responsePausedLiveMicrophoneRef.current = false
       if (pendingInputLockRef.current) {
         const message = pendingInputLockRef.current
         pendingInputLockRef.current = ''
@@ -367,8 +462,16 @@ export function useRealtimeVoice() {
       setError('Our agent had trouble processing that. Please try again.')
       respondingRef.current = false
       setIsResponding(false)
+      setIsProcessingUserInput(false)
     }
-  }, [lockUserInput, muteMicrophone, persistMessage, registerUserInput])
+  }, [
+    finalizeAssistantMessages,
+    limitReason,
+    lockUserInput,
+    persistMessage,
+    queueAssistantMessage,
+    registerUserInput,
+  ])
 
   const ensureSession = useCallback(async () => {
     const sessionId = await ensureRealtimeIntakeSession(sessionIdRef.current)
@@ -393,6 +496,7 @@ export function useRealtimeVoice() {
     setLimitReason('')
     setLimitWarning('')
     setIsIntakeComplete(false)
+    setIsProcessingUserInput(false)
     pendingInputLockRef.current = ''
     userTurnCountRef.current = 0
     totalUserCharactersRef.current = 0
@@ -603,10 +707,12 @@ export function useRealtimeVoice() {
     hasAssistantStarted,
     isMicrophoneMuted,
     isResponding,
+    isProcessingUserInput,
     isIntakeComplete,
     limitReason,
     limitWarning,
     claimSession,
+    editMessage,
     ensureSession,
     sendTextMessage,
     start,

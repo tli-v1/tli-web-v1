@@ -33,7 +33,12 @@ import {
   ACCEPTED_CASE_FILE_TYPES,
   validateCaseFiles,
 } from '../../storage/fileValidation'
-import { uploadFile, createSignedUrl, removeFiles } from '../../storage/fileUpload'
+import {
+  uploadFile,
+  createSecureObjectUrl,
+  removeFiles,
+  revokeSecureObjectUrl,
+} from '../../storage/fileUpload'
 import { normalizeStoragePath } from '../../storage/paths'
 import { formatDisplayDate } from '../../utils/formatDate'
 import './CaseDetails.css'
@@ -192,9 +197,11 @@ function CaseDetails() {
     try {
       const { bucket, path: relativePath } = normalizeStoragePath(doc.storage_path, 'case-docs')
       if (!relativePath) throw new Error('Missing storage path.')
-      const { url, error } = await createSignedUrl(bucket, relativePath, 60)
+      const { url, error } = await createSecureObjectUrl(bucket, relativePath, 60)
       if (error) throw new Error(error)
+      if (!url) throw new Error('Unable to open file.')
       window.open(url, '_blank', 'noopener,noreferrer')
+      revokeSecureObjectUrl(url)
     } catch (err) {
       setViewError(err.message || 'Unable to open file.')
     } finally {
@@ -214,9 +221,11 @@ function CaseDetails() {
       const { bucket, path } = normalizeStoragePath(file.storage_path, 'agreements')
 
       if (!path) throw new Error('Missing file path.')
-      const { url, error } = await createSignedUrl(bucket, path, 60)
+      const { url, error } = await createSecureObjectUrl(bucket, path, 60)
       if (error) throw new Error(error)
+      if (!url) throw new Error('Unable to open agreement file.')
       window.open(url, '_blank', 'noopener,noreferrer')
+      revokeSecureObjectUrl(url)
     } catch (err) {
       setViewError(err.message || 'Unable to open agreement file.')
     } finally {

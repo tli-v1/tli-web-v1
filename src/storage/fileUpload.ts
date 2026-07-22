@@ -1,12 +1,12 @@
 import {
   deleteObject,
-  getDownloadURL,
+  getBlob,
   ref,
   uploadBytes,
 } from 'firebase/storage';
 import { getIdToken } from 'firebase/auth';
 import { auth, storage } from '../config/firebase';
-import type { FileUploadParams, FileUploadResponse, SignedUrlResponse } from '../types';
+import type { FileUploadParams, FileUploadResponse, SecureObjectUrlResponse } from '../types';
 import { validateCaseFile } from './fileValidation';
 
 const DEFAULT_FOLDER = 'case-docs';
@@ -30,6 +30,10 @@ function cleanSegment(value: string): string {
 function storagePath(folder: string, relativePath: string): string {
   const safeFolder = cleanSegment(folder || DEFAULT_FOLDER);
   const safePath = relativePath.replace(/^\/+/, '');
+  if (!safePath) return safeFolder;
+  if (safePath === safeFolder || safePath.startsWith(`${safeFolder}/`)) {
+    return safePath;
+  }
   return `${safeFolder}/${safePath}`;
 }
 
@@ -52,6 +56,27 @@ function friendlyUploadError(error: unknown): string {
   }
 
   return error instanceof Error ? error.message : 'Failed to upload file'
+}
+
+function friendlyFileOpenError(error: unknown): string {
+  const code = (
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && typeof error.code === 'string'
+  ) ? error.code : ''
+
+  if (code === 'storage/unauthorized') {
+    return 'You do not have permission to open that file.'
+  }
+  if (code === 'storage/object-not-found') {
+    return 'That file could not be found.'
+  }
+  if (code === 'storage/retry-limit-exceeded') {
+    return 'Opening the file timed out. Check your connection and try again.'
+  }
+
+  return error instanceof Error ? error.message : 'Unable to open file'
 }
 
 export async function uploadFile({
@@ -152,19 +177,33 @@ export async function removeFiles(
   }
 }
 
-export async function createSignedUrl(
+export async function createSecureObjectUrl(
   bucketOrPath: string,
   pathOrExpires: string | number = 60,
   _expiresIn: number = 60
-): Promise<SignedUrlResponse> {
+): Promise<SecureObjectUrlResponse> {
   const bucket = typeof pathOrExpires === 'string' ? bucketOrPath : DEFAULT_FOLDER;
   const path = typeof pathOrExpires === 'string' ? pathOrExpires : bucketOrPath;
 
   try {
-    const url = await getDownloadURL(ref(storage, storagePath(bucket, path)));
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error('Sign in before opening files.');
+    }
+    await getIdToken(currentUser, true);
+
+    const blob = await getBlob(ref(storage, storagePath(bucket, path)));
+    const url = URL.createObjectURL(blob);
     return { url, error: null };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to create download URL';
-    return { url: null, error: message };
+    return { url: null, error: friendlyFileOpenError(error) };
   }
 }
+
+export function revokeSecureObjectUrl(url: string, delayMs = 60_000): void {
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, delayMs);
+}
+
+export const createSignedUrl = createSecureObjectUrl;

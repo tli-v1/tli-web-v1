@@ -248,6 +248,7 @@ function Dashboard() {
   const pageCount = Math.max(1, Math.ceil(caseTotal / CASES_PER_PAGE))
   const firstCaseNumber = caseTotal === 0 ? 0 : (casePage - 1) * CASES_PER_PAGE + 1
   const lastCaseNumber = Math.min(casePage * CASES_PER_PAGE, caseTotal)
+  const dashboardGreetingName = profileName || sessionUser?.email || ''
 
   if (!sessionUser) {
     return (
@@ -362,7 +363,10 @@ function Dashboard() {
         <header className="dashboard-head">
           <div>
             <p className="eyebrow">Welcome back</p>
-            <h1>Hi, {profileName || sessionUser.email}</h1>
+            <h1 className="dashboard-greeting" title={dashboardGreetingName}>
+              <span>Hi, </span>
+              <span className="dashboard-greeting__name">{dashboardGreetingName}</span>
+            </h1>
             <p className="lead">
               Track the matters you&apos;ve submitted and pick up where you left off.
             </p>

@@ -12,6 +12,7 @@
   align-self: stretch;
   text-align: center;
   background: #fff;
+  overflow-x: clip;
 }
 
 .landing section {
@@ -100,9 +101,7 @@
   gap: clamp(2.9rem, 5.6vh, 4.8rem);
   align-items: center;
   align-content: center;
-  animation:
-    heroFadeIn 900ms ease both,
-    heroGradientDrift 22s ease-in-out 1s infinite alternate;
+  animation: heroGradientDrift 22s ease-in-out 1s infinite alternate;
   overflow: hidden;
   isolation: isolate;
 }
@@ -1051,19 +1050,6 @@
   animation-delay: 240ms;
 }
 
-@keyframes heroFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(18px);
-    filter: saturate(0.8);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-    filter: saturate(1);
-  }
-}
-
 @keyframes heroGradientDrift {
   from {
     background-position: 46% 46%;
@@ -1222,8 +1208,24 @@
 @media (max-width: 640px) {
   .landing {
     --landing-inline-space: 2rem;
+    align-items: stretch;
     gap: 0;
     margin-bottom: 0;
+    background: #fff;
+  }
+
+  .landing .full-bleed {
+    width: 100%;
+    max-width: none;
+  }
+
+  .landing > .hero.full-bleed {
+    align-self: stretch;
+    left: 50%;
+    inline-size: 100vw;
+    max-inline-size: none;
+    margin-inline: 0;
+    transform: translateX(-50%);
   }
 
   .hero {
@@ -1238,6 +1240,7 @@
     padding-left: 1.25rem;
     gap: clamp(1.55rem, 5vh, 2.65rem);
     align-content: center;
+    width: 100%;
   }
 
   .hero .section {

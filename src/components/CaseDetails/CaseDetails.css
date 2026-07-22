@@ -1306,8 +1306,10 @@
   }
 
   .case-panel__heading--action {
-    align-items: flex-start;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
   }
 
   .case-panel__heading-copy {
@@ -1316,7 +1318,7 @@
   }
 
   .case-panel__actions {
-    width: 100%;
+    width: auto;
     flex-wrap: wrap;
     justify-content: flex-end;
   }
@@ -1324,14 +1326,14 @@
   .case-panel .case-card-edit,
   .case-panel .case-panel-expand,
   .case-icon-button {
-    min-height: 44px;
+    min-height: 38px;
     padding-inline: 0.55rem;
   }
 
   .case-icon-button {
-    width: 44px;
-    min-width: 44px;
-    height: 44px;
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
   }
 
   .case-panel {

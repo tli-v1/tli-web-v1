@@ -41,6 +41,9 @@ interface RealtimeVoiceIntakeProps {
 
 type AuthMode = 'signin' | 'signup'
 
+const FILE_UPLOAD_PROMPT_PATTERN =
+  /\b(?:attach|upload|add|provide|share|select|choose)\b[\s\S]{0,120}\b(?:files?|documents?|evidence|photos?|photographs?|videos?|records?|reports?|bills?|receipts?|contracts?|correspondence|attachments?)\b|\b(?:files?|documents?|evidence|photos?|photographs?|videos?|records?|reports?|bills?|receipts?|contracts?|correspondence|attachments?)\b[\s\S]{0,120}\b(?:attach|upload|add|provide|share|select|choose)\b/i
+
 export default function RealtimeVoiceIntake({
   onClose,
   onFallbackToText,
@@ -55,6 +58,8 @@ export default function RealtimeVoiceIntake({
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([])
   const [textInput, setTextInput] = useState('')
+  const [editingMessageId, setEditingMessageId] = useState('')
+  const [editingMessageText, setEditingMessageText] = useState('')
   const [authMode, setAuthMode] = useState<AuthMode>('signup')
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
@@ -73,8 +78,7 @@ export default function RealtimeVoiceIntake({
 
     return Boolean(
       latestAssistantMessage
-      && /\b(attach|document|evidence|file|photo|photograph|video|record|report|bill|receipt|contract|correspondence)\w*\b/i
-        .test(latestAssistantMessage.content),
+      && FILE_UPLOAD_PROMPT_PATTERN.test(latestAssistantMessage.content),
     )
   }, [realtime.messages])
 
@@ -86,7 +90,7 @@ export default function RealtimeVoiceIntake({
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [realtime.messages])
+  }, [realtime.messages, realtime.isProcessingUserInput])
 
   useEffect(() => {
     if (!realtime.isIntakeComplete) return
@@ -140,6 +144,22 @@ export default function RealtimeVoiceIntake({
       )
     if (realtime.sendTextMessage(message, { preserveMicrophone: showFileUpload })) {
       setTextInput('')
+    }
+  }
+
+  const beginEditingMessage = (messageId: string, content: string) => {
+    setEditingMessageId(messageId)
+    setEditingMessageText(content)
+  }
+
+  const cancelEditingMessage = () => {
+    setEditingMessageId('')
+    setEditingMessageText('')
+  }
+
+  const saveEditingMessage = () => {
+    if (realtime.editMessage(editingMessageId, editingMessageText)) {
+      cancelEditingMessage()
     }
   }
 
@@ -403,6 +423,9 @@ export default function RealtimeVoiceIntake({
               realtime.limitReason ? 'Intake paused' : 'Voice session ended'
             )}
           </p>
+          <span className="realtime-intake__edit-disclaimer">
+            Tap your responses to edit them.
+          </span>
         </div>
         <button
           className="realtime-intake__close"
@@ -418,11 +441,68 @@ export default function RealtimeVoiceIntake({
         {realtime.messages.map((message) => (
           <article
             key={message.id}
-            className={`realtime-intake__message realtime-intake__message--${message.role}`}
+            className={`realtime-intake__message realtime-intake__message--${message.role}${
+              message.role === 'user' && !intakeSaved && editingMessageId !== message.id
+                ? ' realtime-intake__message--editable'
+                : ''
+            }`}
+            role={message.role === 'user' && !intakeSaved && editingMessageId !== message.id ? 'button' : undefined}
+            tabIndex={message.role === 'user' && !intakeSaved && editingMessageId !== message.id ? 0 : undefined}
+            title={message.role === 'user' && !intakeSaved ? 'Tap to edit this answer' : undefined}
+            onClick={() => {
+              if (message.role === 'user' && !intakeSaved && editingMessageId !== message.id) {
+                beginEditingMessage(message.id, message.content)
+              }
+            }}
+            onKeyDown={(event) => {
+              if (
+                message.role === 'user'
+                && !intakeSaved
+                && editingMessageId !== message.id
+                && (event.key === 'Enter' || event.key === ' ')
+              ) {
+                event.preventDefault()
+                beginEditingMessage(message.id, message.content)
+              }
+            }}
           >
-            <p>{message.content}</p>
+            {editingMessageId === message.id ? (
+              <div className="realtime-intake__message-edit">
+                <textarea
+                  value={editingMessageText}
+                  onChange={(event) => setEditingMessageText(event.target.value)}
+                  maxLength={800}
+                  aria-label="Edit your message"
+                />
+                <div className="realtime-intake__message-edit-actions">
+                  <button type="button" onClick={cancelEditingMessage}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveEditingMessage}
+                    disabled={!editingMessageText.trim()}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p>{message.content}</p>
+            )}
           </article>
         ))}
+        {realtime.isProcessingUserInput && (
+          <div
+            className="realtime-intake__message realtime-intake__message--user realtime-intake__typing realtime-intake__typing--user"
+            role="status"
+            aria-label="Your answer is being processed"
+          >
+            <span aria-hidden="true" />
+            <span aria-hidden="true" />
+            <span aria-hidden="true" />
+          </div>
+        )}
         {realtime.error && <p className="realtime-intake__error">{realtime.error}</p>}
         {realtime.limitReason && (
           <p className="realtime-intake__limit-notice">{realtime.limitReason}</p>

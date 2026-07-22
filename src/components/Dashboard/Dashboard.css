@@ -1,6 +1,7 @@
 .dashboard {
   flex: 1;
   width: 100%;
+  min-width: 0;
   display: flex;
   align-items: flex-start;
   margin-top: 0 !important;
@@ -67,7 +68,9 @@
 }
 
 .dashboard-card {
+  position: relative;
   width: 100%;
+  min-width: 0;
   max-width: 1300px;
   margin-inline: auto;
   padding: clamp(2rem, 3vw, 3.5rem);
@@ -224,11 +227,15 @@
 }
 
 .dashboard-head {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   justify-content: space-between;
   gap: 1.5rem;
-  align-items: center;
+  align-items: start;
+}
+
+.dashboard-head > div {
+  min-width: 0;
 }
 
 .dashboard-actions {
@@ -240,13 +247,29 @@
 
 .dashboard-head h1 {
   font-size: clamp(1.75rem, 3vw, 2.5rem);
-  margin: 0.25rem 0;
+  margin: 0.25rem 0 0.65rem;
+  max-width: 100%;
+}
+
+.dashboard-greeting {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  white-space: nowrap;
+}
+
+.dashboard-greeting__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cases-section {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  min-width: 0;
 }
 
 .cases-head h2 {
@@ -273,6 +296,7 @@
   border-bottom: 1px solid #e8edf4;
   text-align: left;
   vertical-align: middle;
+  overflow-wrap: anywhere;
 }
 
 .cases-table th {
@@ -297,8 +321,10 @@
 }
 
 .case-table__title {
+  min-width: 0;
   color: var(--navy-800);
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .case-table__title:hover,
@@ -386,21 +412,54 @@
 
 @media (max-width: 760px) {
   .dashboard-head {
-    flex-direction: column;
-    align-items: flex-start;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: start;
   }
 
-  .dashboard-actions,
+  .dashboard-actions {
+    width: auto;
+    justify-self: end;
+  }
+
   .dashboard-actions .btn {
-    width: 100%;
+    width: auto;
+    min-height: 34px;
+    padding: 0.45rem 0.8rem;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    line-height: 1;
   }
 
   .dashboard {
+    padding-top: clamp(5.25rem, 18vw, 6.25rem);
+    padding-right: 0.75rem !important;
     padding-bottom: 1rem;
+    padding-left: 0.75rem !important;
   }
 
   .dashboard-card {
-    padding-inline: 1rem;
+    width: 100%;
+    padding: 1.35rem 1rem 1.6rem;
+    border-radius: 20px;
+  }
+
+  .dashboard-head .eyebrow {
+    margin-top: 0;
+  }
+
+  .dashboard-head .lead {
+    max-width: 100%;
+    margin-top: 0.4rem;
+    margin-bottom: 1.35rem;
+    font-size: 0.98rem;
+    line-height: 1.5;
+  }
+
+  .dashboard-greeting {
+    max-width: 100%;
+    font-size: clamp(1.95rem, 8.2vw, 2.65rem);
+    line-height: 1.12;
   }
 
   .cases-table-wrap {
@@ -446,6 +505,8 @@
     padding: 0.72rem 0.85rem;
     border-bottom: 1px solid #edf1f6;
     text-align: right;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .cases-table td::before {
@@ -471,7 +532,12 @@
 
   .case-table__title {
     display: block;
+    max-width: 100%;
     overflow-wrap: anywhere;
+  }
+
+  .cases-table td > * {
+    min-width: 0;
   }
 
   .cases-table .case-table__action-cell {
@@ -493,10 +559,12 @@
   .cases-pagination {
     align-items: flex-start;
     flex-direction: column;
+    min-width: 0;
   }
 
   .cases-pagination__controls {
     width: 100%;
+    min-width: 0;
     justify-content: space-between;
   }
 
