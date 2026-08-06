@@ -1,0 +1,18 @@
+[
+  {
+    "origin": [
+      "https://www.truelegalinnovations.com",
+      "https://truelegalinnovations.com",
+      "https://peak-bit-486121-n6.web.app",
+      "http://localhost:5173"
+    ],
+    "method": ["GET", "HEAD"],
+    "responseHeader": [
+      "Content-Type",
+      "Content-Disposition",
+      "Content-Length",
+      "Cache-Control"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

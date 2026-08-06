@@ -41,6 +41,7 @@ import {
 } from '../../storage/fileUpload'
 import { normalizeStoragePath } from '../../storage/paths'
 import { formatDisplayDate } from '../../utils/formatDate'
+import { formatCaseStatus } from '../../utils/formatCaseStatus'
 import './CaseDetails.css'
 
 type CaseEditSection = 'all' | 'overview' | 'damages' | 'parties' | 'contact' | 'documents'
@@ -530,7 +531,7 @@ function CaseDetails() {
             <div className="case-detail-nav__actions">
               <span className={`case-status case-status--${caseSummary.status.toLowerCase()}`}>
                 <i aria-hidden="true" />
-                {caseSummary.status}
+                {formatCaseStatus(caseSummary.status)}
               </span>
               <button
                 type="button"
@@ -617,6 +618,7 @@ function CaseDetails() {
                       >
                         <option value="PENDING">Pending</option>
                         <option value="OPEN">Open</option>
+                        <option value="UNDER_REVIEW">Under review</option>
                         <option value="CLOSED">Closed</option>
                       </select>
                     </label>

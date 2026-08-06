@@ -25,6 +25,10 @@ import {
 import { getStateCodes, type StateCode } from '../../api/stateCodes'
 import { ensureUserProfile } from '../../api/userProfile'
 import { createCase, deleteCase, createIncident, createDamages, createCaseContact, createParties, createDocument } from '../../api/intake'
+import {
+  caseNotificationTitle,
+  notifyMarketplaceCaseCreated,
+} from '../../api/marketplaceNotifications'
 import { uploadFile, removeFiles } from '../../storage/fileUpload'
 import { intakeFormSchema } from '../../intake/intakeFormSchema'
 import {
@@ -603,6 +607,19 @@ function IntakeForm() {
         })
         if (docError) throw new Error(docError)
       }
+
+      notifyMarketplaceCaseCreated({
+        caseId: createdCaseId,
+        title: caseNotificationTitle({
+          city: formData.city,
+          stateCode: formData.state,
+        }),
+        description: formData.whatHappened,
+        stateCode: formData.state,
+        source: 'tli-web-case-created',
+      }).catch((error) => {
+        console.warn('Unable to enqueue marketplace case notification:', error)
+      })
 
       setSubmitted(true)
       setSubmittedCaseId(createdCaseId)

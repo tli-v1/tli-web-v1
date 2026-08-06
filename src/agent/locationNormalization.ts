@@ -111,6 +111,9 @@ function extractCity(value: string): string {
   let beforeState = value.slice(0, state.index)
     .replace(/[,\s]+$/, '')
     .trim()
+  if (beforeState.includes(',')) {
+    beforeState = beforeState.split(',').pop()?.trim() || beforeState
+  }
   const prepositionParts = beforeState.split(/\b(?:in|near)\s+/i)
   beforeState = prepositionParts[prepositionParts.length - 1] ?? beforeState
 

@@ -37,7 +37,7 @@ const persistIntake = httpsCallable<Record<string, unknown>, PersistenceResponse
   'persistConversationalIntake',
 )
 
-const ai = getAI(app, { backend: new VertexAIBackend('us-central1') })
+const ai = getAI(app, { backend: new VertexAIBackend('global') })
 
 export const minervaSystemInstruction = `You are True Legal's legal assistant for the website chat widget. Refer to yourself only as "our agent" or "your intake agent"; do not use a personal name.
 
@@ -52,7 +52,7 @@ Rules:
 - Keep the conversation in normal chat prose. Do not output intake JSON or structured extraction blocks.`
 
 export const minervaModel = getGenerativeModel(ai, {
-  model: 'gemini-2.5-flash-lite',
+  model: 'gemini-3.5-flash-lite',
   systemInstruction: minervaSystemInstruction,
   generationConfig: {
     maxOutputTokens: 1024,
@@ -115,6 +115,12 @@ export async function updateConversationalIntakeProcessing(
     structuredData?: unknown
     caseId?: string
     error?: string
+    source?: 'voice' | 'text'
+    processingModel?: string
+    processingLocation?: string
+    processingAttemptCount?: number
+    processingUsedFallback?: boolean
+    processingErrorCategory?: string
   },
 ): Promise<void> {
   await persistIntake({

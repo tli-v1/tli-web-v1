@@ -100,6 +100,11 @@
   box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.13);
 }
 
+.case-status--under_review i {
+  background: #60a5fa;
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.16);
+}
+
 .case-status--closed i {
   background: #94a3b8;
   box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.13);

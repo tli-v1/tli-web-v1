@@ -1,4 +1,10 @@
-import { getAI, getGenerativeModel, Schema, VertexAIBackend } from 'firebase/ai'
+import {
+  getAI,
+  getGenerativeModel,
+  Schema,
+  VertexAIBackend,
+  type GenerativeModel,
+} from 'firebase/ai'
 import {
   createCase,
   createCaseContact,
@@ -8,6 +14,10 @@ import {
   createParties,
   deleteCase,
 } from '../api/intake'
+import {
+  caseNotificationTitle,
+  notifyMarketplaceCaseCreated,
+} from '../api/marketplaceNotifications'
 import { ensureUserProfile } from '../api/userProfile'
 import { app } from '../config/firebase'
 import type { User } from '../types'
@@ -26,6 +36,10 @@ import {
 } from './damageNormalization'
 import type { ChatIntakeDraft } from './intakeFlow'
 import { resolveLocation } from './locationNormalization'
+import {
+  buildFallbackStructuredIntake,
+  isAiProcessingUnavailable,
+} from './structuredIntakeFallback'
 
 export interface IntakeFile {
   name: string
@@ -61,7 +75,14 @@ export interface StructuredIntake {
   consentContact: boolean
 }
 
-const ai = getAI(app, { backend: new VertexAIBackend('us-central1') })
+export interface IntakeProcessingMetadata {
+  usedFallback: boolean
+  model: string
+  location: string
+  attemptCount: number
+  errorCategory: string
+}
+
 const structuredIntakeSchema = Schema.object({
   properties: {
     description: Schema.string(),
@@ -95,14 +116,17 @@ const structuredIntakeSchema = Schema.object({
   },
 })
 
-const processingModel = getGenerativeModel(ai, {
-  model: 'gemini-2.5-flash',
-  generationConfig: {
-    responseMimeType: 'application/json',
-    responseSchema: structuredIntakeSchema,
-    temperature: 0.1,
-  },
-})
+const PROCESSING_MODEL_PLANS = [
+  { location: 'global', model: 'gemini-3.5-flash-lite', attempts: 2 },
+  { location: 'global', model: 'gemini-2.5-flash', attempts: 1 },
+  { location: 'global', model: 'gemini-2.5-flash-lite', attempts: 2 },
+  { location: 'us-central1', model: 'gemini-2.5-flash-lite', attempts: 1 },
+] as const
+
+const PROCESSING_MODEL_TIMEOUT_MS = 12_000
+const RETRY_BASE_DELAY_MS = 900
+const RETRY_MAX_DELAY_MS = 4_500
+let aiProcessingQueue: Promise<void> = Promise.resolve()
 
 export async function processIntakeIntoCase({
   draft,
@@ -114,42 +138,16 @@ export async function processIntakeIntoCase({
   files: IntakeFile[]
   prepareFiles?: (caseId: string) => Promise<IntakeFile[]>
   user: User
-}): Promise<{ caseId: string; structured: StructuredIntake }> {
+}): Promise<{
+  caseId: string
+  structured: StructuredIntake
+  processingMetadata: IntakeProcessingMetadata
+}> {
   const currentDate = new Date().toISOString().slice(0, 10)
-  const prompt = `Convert this completed conversational legal intake into the supplied JSON schema.
-
-Rules:
-- Use only information supported by the intake.
-- Best-effort normalization is expected, but do not invent names, claim numbers, expenses, or contact details.
-- Use empty strings for unknown text values and 0 for unknown numeric values.
-- Resolve relative dates using today's date: ${currentDate}.
-- incidentDate must be YYYY-MM-DD. If no date can be reasonably inferred, use ${currentDate}.
-- stateCode should be a two-letter US postal code when possible, otherwise empty.
-- locationDetails should preserve the complete place the user gave, including a street, intersection, building, landmark, or nearby description.
-- Preserve the user's incident description faithfully and concisely.
-- Expand monetary shorthand. For example, "30K" and "30 thousand" mean 30000.
-- medicalBillsUsd includes medical bills, medical expenses, and medical damages stated by the user.
-- propertyDamageUsd is the stated vehicle or other property repair/damage amount.
-- otherExpensesUsd is a stated total for other out-of-pocket costs that is not already included in medical bills or property damage.
-- daysMissed is the number of work days missed. Convert missed work weeks to five work days per week.
-- hourlyRateUsd is the user's hourly pay rate, not a bill or total loss.
-- lostWagesUsd is an explicitly stated lost-income total. If it is not stated but daysMissed and hourlyRateUsd are known, calculate daysMissed * 8 * hourlyRateUsd.
-- injuries, treatment, emotionalImpact, and otherDamages should preserve supported non-financial details in their respective categories.
-- damageDetails should concisely preserve the complete injuries, treatment, expenses, property damage, work loss, emotional effects, and other impacts answer, including details that do not fit another field.
-- Preserve the user's phone number in the phone field. Do not confuse it with a policy or claim number.
-- consentStore and consentContact are true only if the user agreed.
-- preferredContact defaults to email.
-
-Raw intake answers:
-${JSON.stringify(draft.answers, null, 2)}`
-
-  const result = await processingModel.generateContent(prompt)
-  const structured = normalizeStructuredIntake(
-    JSON.parse(result.response.text()) as Partial<StructuredIntake>,
-    draft,
-    user,
-    currentDate,
+  const extraction = await enqueueAiProcessing(() =>
+    extractStructuredIntakeWithResilience(draft, user, currentDate),
   )
+  const { structured, metadata: processingMetadata } = extraction
 
   const profile = await ensureUserProfile({
     userId: user.id,
@@ -233,7 +231,20 @@ ${JSON.stringify(draft.answers, null, 2)}`
       if (document.error) throw new Error(document.error)
     }
 
-    return { caseId, structured }
+    notifyMarketplaceCaseCreated({
+      caseId,
+      title: caseNotificationTitle({
+        city: structured.city,
+        stateCode: structured.stateCode,
+      }),
+      description: structured.description,
+      stateCode: structured.stateCode,
+      source: 'tli-web-case-created',
+    }).catch((error) => {
+      console.warn('Unable to enqueue marketplace case notification:', error)
+    })
+
+    return { caseId, structured, processingMetadata }
   } catch (error) {
     await deleteCase(caseId)
     throw error
@@ -295,6 +306,148 @@ function normalizeStructuredIntake(
     consentStore: Boolean(value.consentStore),
     consentContact: Boolean(value.consentContact),
   }
+}
+
+async function extractStructuredIntakeWithResilience(
+  draft: ChatIntakeDraft,
+  user: User,
+  currentDate: string,
+): Promise<{ structured: StructuredIntake; metadata: IntakeProcessingMetadata }> {
+  const prompt = buildProcessingPrompt(draft, currentDate)
+  let lastError: unknown = null
+  let attemptCount = 0
+
+  for (const plan of PROCESSING_MODEL_PLANS) {
+    const model = createProcessingModel(plan.location, plan.model)
+
+    for (let attempt = 1; attempt <= plan.attempts; attempt += 1) {
+      attemptCount += 1
+      try {
+        const result = await model.generateContent(prompt)
+        return {
+          structured: normalizeStructuredIntake(
+            JSON.parse(result.response.text()) as Partial<StructuredIntake>,
+            draft,
+            user,
+            currentDate,
+          ),
+          metadata: {
+            usedFallback: false,
+            model: plan.model,
+            location: plan.location,
+            attemptCount,
+            errorCategory: '',
+          },
+        }
+      } catch (error) {
+        lastError = error
+        console.warn(
+          `AI intake extraction failed with ${plan.model} in ${plan.location} `
+          + `(attempt ${attempt}/${plan.attempts}).`,
+          error,
+        )
+
+        if (attempt < plan.attempts && isAiProcessingUnavailable(error)) {
+          await waitWithBackoff(attempt)
+        } else {
+          break
+        }
+      }
+    }
+  }
+
+  console.warn('AI intake processing unavailable; using deterministic fallback.', lastError)
+  return {
+    structured: buildFallbackStructuredIntake(draft, user, currentDate),
+    metadata: {
+      usedFallback: true,
+      model: 'deterministic-fallback',
+      location: 'local',
+      attemptCount,
+      errorCategory: classifyProcessingError(lastError),
+    },
+  }
+}
+
+function classifyProcessingError(error: unknown): string {
+  const message = error instanceof Error
+    ? `${error.name} ${error.message}`
+    : String(error)
+  if (/\b(429|resource exhausted|quota|rate limit|too many requests)\b/i.test(message)) {
+    return 'quota_or_rate_limit'
+  }
+  if (/\b(timeout|abort)\b/i.test(message)) return 'timeout'
+  if (/\b(unavailable|overloaded)\b/i.test(message)) return 'model_unavailable'
+  if (/\b(parse|json|schema)\b/i.test(message)) return 'parse_or_schema'
+  return message ? 'unknown_ai_failure' : ''
+}
+
+function createProcessingModel(location: string, model: string): GenerativeModel {
+  const ai = getAI(app, { backend: new VertexAIBackend(location) })
+  return getGenerativeModel(
+    ai,
+    {
+      model,
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: structuredIntakeSchema,
+        temperature: 0,
+      },
+    },
+    {
+      timeout: PROCESSING_MODEL_TIMEOUT_MS,
+    },
+  )
+}
+
+function buildProcessingPrompt(draft: ChatIntakeDraft, currentDate: string): string {
+  return [
+    'Convert this completed legal intake into the JSON schema.',
+    `Today is ${currentDate}. Use YYYY-MM-DD dates; if missing, use today.`,
+    'Use only supported facts. Unknown text = empty string. Unknown numbers = 0.',
+    'Normalize US state to two-letter code. Preserve full location in locationDetails.',
+    'Expand money shorthand: 30K/30 thousand = 30000.',
+    'medicalBillsUsd = medical costs only. propertyDamageUsd = vehicle/property damage.',
+    'daysMissed is work days; weeks = 5 work days. lostWagesUsd = daysMissed * 8 * hourlyRateUsd only if no explicit lost wage total exists.',
+    'Phone goes only in phone, not policy/claim. preferredContact defaults to email.',
+    'Consent booleans are true only if user agreed.',
+    '',
+    'Intake answers:',
+    formatDraftAnswers(draft),
+  ].join('\n')
+}
+
+function formatDraftAnswers(draft: ChatIntakeDraft): string {
+  return Object.entries(draft.answers)
+    .filter(([, value]) => value?.trim())
+    .map(([key, value]) => `${key}: ${value!.trim()}`)
+    .join('\n')
+}
+
+async function enqueueAiProcessing<T>(task: () => Promise<T>): Promise<T> {
+  const previous = aiProcessingQueue
+  let releaseQueue: () => void = () => undefined
+  aiProcessingQueue = new Promise<void>((resolve) => {
+    releaseQueue = resolve
+  })
+
+  await previous.catch(() => undefined)
+  try {
+    return await task()
+  } finally {
+    releaseQueue()
+  }
+}
+
+async function waitWithBackoff(attempt: number): Promise<void> {
+  const exponentialDelay = Math.min(
+    RETRY_MAX_DELAY_MS,
+    RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+  )
+  const jitter = Math.floor(Math.random() * RETRY_BASE_DELAY_MS)
+  await new Promise((resolve) => {
+    window.setTimeout(resolve, exponentialDelay + jitter)
+  })
 }
 
 function clean(value: unknown): string {

@@ -1,4 +1,9 @@
 import { getApps, initializeApp } from "firebase/app";
+import {
+  initializeAppCheck,
+  ReCaptchaEnterpriseProvider,
+  type AppCheck,
+} from "firebase/app-check";
 import { getAuth } from "firebase/auth";
 import { getAnalytics, type Analytics } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
@@ -32,6 +37,27 @@ if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
 
 const existingApps = getApps();
 const app = existingApps.length ? existingApps[0]! : initializeApp(firebaseConfig);
+let appCheckInstance: AppCheck | null = null;
+
+try {
+  const recaptchaEnterpriseSiteKey =
+    import.meta.env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY
+    || '6LdwunUtAAAAAH9joEv_Zff147zIVthbw8q831Vj';
+
+  if (typeof window !== 'undefined' && recaptchaEnterpriseSiteKey) {
+    if (import.meta.env.DEV && import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG_TOKEN) {
+      self.FIREBASE_APPCHECK_DEBUG_TOKEN = import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG_TOKEN;
+    }
+
+    appCheckInstance = initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(recaptchaEnterpriseSiteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+  }
+} catch (error) {
+  console.warn('App Check not available:', error);
+}
+
 const auth = getAuth(app);
 const db = getFirestore(app);
 const functions = getFunctions(app, 'us-central1');
@@ -46,5 +72,5 @@ try {
   console.warn('Analytics not available:', error);
 }
 
-export { app, auth, db, functions, storage };
+export { app, appCheckInstance as appCheck, auth, db, functions, storage };
 export const analytics = analyticsInstance;

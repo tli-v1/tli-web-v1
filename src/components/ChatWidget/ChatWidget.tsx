@@ -50,6 +50,7 @@ import {
   type ConversationalIntakeMessage,
   updateConversationalIntakeProcessing,
 } from '../../agent/initialize'
+import { classifyClientProcessingError } from '../../agent/processingErrors'
 import { processIntakeIntoCase } from '../../agent/processIntake'
 import { isCaseIntakeRelevant, offTopicMessage } from '../../agent/relevance'
 import { useSpeechOutput } from '../../hooks/useSpeechOutput'
@@ -305,6 +306,7 @@ export function ChatWidget({
       setSessionId(processingSessionId)
       await updateConversationalIntakeProcessing(processingSessionId, {
         status: 'processing',
+        source: 'text',
       })
       const processed = await processIntakeIntoCase({
         draft: completedDraft,
@@ -349,6 +351,12 @@ export function ChatWidget({
         status: 'processed',
         structuredData: processed.structured,
         caseId: processed.caseId,
+        source: 'text',
+        processingModel: processed.processingMetadata.model,
+        processingLocation: processed.processingMetadata.location,
+        processingAttemptCount: processed.processingMetadata.attemptCount,
+        processingUsedFallback: processed.processingMetadata.usedFallback,
+        processingErrorCategory: processed.processingMetadata.errorCategory,
       })
       setProcessedCaseId(processed.caseId)
       trackCaseSubmitted('text', {
@@ -364,6 +372,8 @@ export function ChatWidget({
         await updateConversationalIntakeProcessing(processingSessionIdForStatus, {
           status: 'failed',
           error: message,
+          source: 'text',
+          processingErrorCategory: classifyClientProcessingError(message),
         }).catch(() => undefined)
       }
       appendAssistantMessage(

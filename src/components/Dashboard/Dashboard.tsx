@@ -16,6 +16,7 @@ import {
   PASSWORD_MIN_LENGTH,
 } from '../../utils/passwordPolicy'
 import { formatDisplayDate } from '../../utils/formatDate'
+import { formatCaseStatus } from '../../utils/formatCaseStatus'
 import { trackAccountAuth } from '../../analytics/googleTags'
 import { getUserProfile } from '../../api/userProfile'
 import type { User, CaseSummary } from '../../types'
@@ -423,7 +424,7 @@ function Dashboard() {
                         <td data-label="Submitted">{formatDisplayDate(item.created_at)}</td>
                         <td data-label="Documents">{item.doc_count}</td>
                         <td data-label="Agreements">{item.agreement_count}</td>
-                        <td data-label="Status"><span className="status-pill">{item.status}</span></td>
+                        <td data-label="Status"><span className="status-pill">{formatCaseStatus(item.status)}</span></td>
                         <td className="case-table__action-cell">
                           <Link
                             to={`/dashboard/cases/${item.case_id}`}

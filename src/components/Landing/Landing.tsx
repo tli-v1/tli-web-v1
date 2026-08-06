@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, MessageSquareText, Mic, X } from 'lucide-react'
+import { BriefcaseBusiness, Check, FileText, MessageSquareText, Mic, Scale, X } from 'lucide-react'
 import RealtimeVoiceIntake from '../RealtimeVoiceIntake'
 import { ChatWidget } from '../ChatWidget/ChatWidget'
 import Footer from '../Footer'
@@ -123,6 +123,119 @@ function Landing() {
       </section>
 
       <HowItWorks />
+
+      <section className="dashboard-preview-section" aria-labelledby="dashboard-preview-title">
+        <div className="dashboard-preview-section__inner">
+          <div className="dashboard-preview-copy">
+            <span className="dashboard-preview-eyebrow">After intake</span>
+            <h2 id="dashboard-preview-title">Watch your case workspace come together.</h2>
+            <p>
+              Your answers become a clear case snapshot, then we review the matter, contact matching lawyers,
+              and show offers as they come in.
+            </p>
+          </div>
+
+          <div className="dashboard-preview-demo" aria-label="Animated preview of a filled out case dashboard">
+            <div className="dashboard-preview-card dashboard-preview-card--main">
+              <div className="dashboard-preview-card__topline">
+                <span>Case workspace</span>
+                <strong>Under review</strong>
+              </div>
+              <div className="dashboard-preview-card__title">
+                <FileText aria-hidden="true" />
+                <div>
+                  <span>What happened</span>
+                  <strong className="dashboard-preview-title-cycle">
+                    <span>
+                      Auto Accident
+                      <small>Charlotte, NC</small>
+                    </span>
+                    <span>
+                      Employment Issue
+                      <small>Austin, TX</small>
+                    </span>
+                    <span>
+                      Contract Dispute
+                      <small>Denver, CO</small>
+                    </span>
+                  </strong>
+                </div>
+              </div>
+              <div className="dashboard-preview-examples" aria-label="Example case descriptions">
+                <p>
+                  <span>Car crash caused neck pain</span>
+                  <span>and medical bills.</span>
+                </p>
+                <p>
+                  <span>Fired after reporting</span>
+                  <span>unsafe work conditions.</span>
+                </p>
+                <p>
+                  <span>Contractor kept my deposit</span>
+                  <span>and left repairs unfinished.</span>
+                </p>
+              </div>
+              <div className="dashboard-preview-grid">
+                <div>
+                  <span>Incident date</span>
+                  <strong>Jul 4, 2026</strong>
+                </div>
+                <div>
+                  <span>Medical bills</span>
+                  <strong>$10,030</strong>
+                </div>
+                <div>
+                  <span>Property damage</span>
+                  <strong>$20,000</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="dashboard-preview-side">
+              <div className="dashboard-preview-card dashboard-preview-card--compact dashboard-preview-card--files">
+                <FileText aria-hidden="true" />
+                <div>
+                  <span>Case files</span>
+                  <strong>3 files organized</strong>
+                </div>
+              </div>
+              <div className="dashboard-preview-card dashboard-preview-card--compact dashboard-preview-card--lawyers">
+                <Scale aria-hidden="true" />
+                <div>
+                  <span>Lawyers contacted</span>
+                  <strong>5 matched firms</strong>
+                </div>
+              </div>
+              <div className="dashboard-preview-card dashboard-preview-card--offer">
+                <div className="dashboard-preview-offer-head">
+                  <BriefcaseBusiness aria-hidden="true" />
+                  <span>New offer received</span>
+                </div>
+                <div className="dashboard-preview-lawyer-list">
+                  <div className="dashboard-preview-lawyer-row">
+                    <strong>Grant Smith</strong>
+                    <small>12 yrs exp · Columbia Law · Trial counsel</small>
+                  </div>
+                  <div className="dashboard-preview-lawyer-row">
+                    <strong>Sarah Lee</strong>
+                    <small>18 yrs exp · UCLA Law · Injury claims</small>
+                  </div>
+                  <div className="dashboard-preview-lawyer-row">
+                    <strong>Marcus Strong</strong>
+                    <small>9 yrs exp · Georgetown Law · Employment</small>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="dashboard-preview-timeline" aria-hidden="true">
+              <span className="is-complete">Intake complete</span>
+              <span className="is-active">Reviewing match</span>
+              <span>Offers arrive</span>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {isIntakeOpen && (
         <div className="hero-chat-overlay" role="dialog" aria-modal="true" aria-label="Conversational intake">

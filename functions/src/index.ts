@@ -1,4 +1,6 @@
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
+import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
 import { VertexAI } from '@google-cloud/vertexai';
@@ -8,8 +10,8 @@ import { createHash } from 'node:crypto';
 admin.initializeApp();
 
 const projectId = 'peak-bit-486121-n6';
-const location = 'us-central1';
-const model = 'gemini-2.5-flash-lite';
+const location = 'global';
+const model = 'gemini-3.5-flash-lite';
 const openAiApiKey = defineSecret('OPENAI_API_KEY');
 const speechClient = new textToSpeech.TextToSpeechClient({
   apiEndpoint: 'us-texttospeech.googleapis.com',
@@ -22,6 +24,7 @@ Keep questions inviting and concise.
 Do not sound distressed, overly cheerful, theatrical, patronizing, or flirtatious.
 When discussing injuries or difficult events, convey quiet empathy without exaggerating emotion.`;
 const conversationalIntakes = admin.firestore().collection('conversationalIntakes');
+const processingAlerts = admin.firestore().collection('processingAlerts');
 const minervaRealtimeInstructions = `You are True Legal Innovations' conversational legal-intake assistant. Refer to yourself only as "our agent" or "your intake agent"; do not use a personal name.
 
 Your purpose is to compassionately collect the information needed for a legal intake. You are not a lawyer, do not provide legal advice, and do not create an attorney-client relationship.
@@ -69,6 +72,79 @@ function validIntakeMessage(value: unknown): value is IntakeMessage {
     && typeof message.content === 'string'
     && message.content.trim().length > 0
     && message.content.length <= 10000;
+}
+
+type ProcessingAlertSeverity = 'critical' | 'warning';
+type ProcessingAlertReason = 'processing_failed' | 'processing_used_fallback' | 'processing_stuck';
+
+function cleanOptionalString(value: unknown, maxLength = 2000): string | null {
+  return typeof value === 'string' && value.trim()
+    ? value.trim().slice(0, maxLength)
+    : null;
+}
+
+function cleanProcessingSource(value: unknown): 'voice' | 'text' | null {
+  return value === 'voice' || value === 'text' ? value : null;
+}
+
+function cleanProcessingAttemptCount(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, Math.trunc(value))
+    : null;
+}
+
+function safeTimestampMillis(value: unknown): number | null {
+  if (
+    value
+    && typeof value === 'object'
+    && 'toMillis' in value
+    && typeof (value as {toMillis?: unknown}).toMillis === 'function'
+  ) {
+    return (value as {toMillis: () => number}).toMillis();
+  }
+  return null;
+}
+
+function logProcessingEvent(
+  eventName: string,
+  payload: Record<string, unknown>,
+  severity: 'log' | 'warn' | 'error' = 'log',
+): void {
+  console[severity](JSON.stringify({
+    event: eventName,
+    ...payload,
+  }));
+}
+
+async function createProcessingAlert(input: {
+  sessionId: string
+  severity: ProcessingAlertSeverity
+  reason: ProcessingAlertReason
+  error?: unknown
+  source?: unknown
+  caseId?: unknown
+  userId?: unknown
+  processingErrorCategory?: unknown
+  processingModel?: unknown
+  processingLocation?: unknown
+  processingAttemptCount?: unknown
+}): Promise<void> {
+  await processingAlerts.doc(`${input.sessionId}-${input.reason}`).set({
+    sessionId: input.sessionId,
+    severity: input.severity,
+    reason: input.reason,
+    status: 'open',
+    source: cleanProcessingSource(input.source),
+    caseId: cleanOptionalString(input.caseId, 200),
+    userId: cleanOptionalString(input.userId, 200),
+    processingErrorCategory: cleanOptionalString(input.processingErrorCategory, 100),
+    processingModel: cleanOptionalString(input.processingModel, 100),
+    processingLocation: cleanOptionalString(input.processingLocation, 100),
+    processingAttemptCount: cleanProcessingAttemptCount(input.processingAttemptCount),
+    error: cleanOptionalString(input.error, 2000),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge: true});
 }
 
 export const persistConversationalIntake = onCall(
@@ -262,20 +338,207 @@ export const persistConversationalIntake = onCall(
         throw new HttpsError('invalid-argument', 'Valid processing status is required.');
       }
 
-      await sessionRef.set({
+      const source = cleanProcessingSource(request.data?.source);
+      const caseId = cleanOptionalString(request.data?.caseId, 200);
+      const processingError = cleanOptionalString(request.data?.error, 2000);
+      const processingErrorCategory = cleanOptionalString(
+        request.data?.processingErrorCategory,
+        100,
+      );
+      const processingUpdate: Record<string, unknown> = {
         processingStatus: status,
         structuredData: request.data?.structuredData ?? null,
-        caseId: typeof request.data?.caseId === 'string' ? request.data.caseId : null,
-        processingError:
-          typeof request.data?.error === 'string' ? request.data.error.slice(0, 2000) : null,
-        processedAt:
-          status === 'processed' ? admin.firestore.FieldValue.serverTimestamp() : null,
+        caseId,
+        processingError,
+        processingSource: source,
+        processingModel: cleanOptionalString(request.data?.processingModel, 100),
+        processingLocation: cleanOptionalString(request.data?.processingLocation, 100),
+        processingAttemptCount: cleanProcessingAttemptCount(request.data?.processingAttemptCount),
+        processingUsedFallback: request.data?.processingUsedFallback === true,
+        processingErrorCategory,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, {merge: true});
+      };
+
+      if (status === 'processing') {
+        processingUpdate.processingStartedAt = admin.firestore.FieldValue.serverTimestamp();
+      }
+      if (status === 'processed') {
+        processingUpdate.processedAt = admin.firestore.FieldValue.serverTimestamp();
+        processingUpdate.processingFinishedAt = admin.firestore.FieldValue.serverTimestamp();
+      }
+      if (status === 'failed') {
+        processingUpdate.processingFailedAt = admin.firestore.FieldValue.serverTimestamp();
+        processingUpdate.processingFinishedAt = admin.firestore.FieldValue.serverTimestamp();
+      }
+
+      await sessionRef.set(processingUpdate, {merge: true});
+
+      logProcessingEvent(
+        `intake_processing_${status}`,
+        {
+          sessionId: sessionRef.id,
+          userId,
+          source,
+          caseId,
+          processingErrorCategory,
+          processingModel: processingUpdate.processingModel,
+          processingLocation: processingUpdate.processingLocation,
+          processingAttemptCount: processingUpdate.processingAttemptCount,
+          processingUsedFallback: processingUpdate.processingUsedFallback,
+          hasError: Boolean(processingError),
+        },
+        status === 'failed' ? 'error' : 'log',
+      );
+
+      if (status === 'failed') {
+        await createProcessingAlert({
+          sessionId: sessionRef.id,
+          severity: 'critical',
+          reason: 'processing_failed',
+          error: processingError,
+          source,
+          caseId,
+          userId,
+          processingErrorCategory,
+          processingModel: processingUpdate.processingModel,
+          processingLocation: processingUpdate.processingLocation,
+          processingAttemptCount: processingUpdate.processingAttemptCount,
+        });
+      }
+
       return {sessionId: sessionRef.id};
     }
 
     throw new HttpsError('invalid-argument', 'Unsupported persistence action.');
+  },
+);
+
+export const alertOnConversationalIntakeProcessingFailure = onDocumentUpdated(
+  {
+    region: 'us-central1',
+    document: 'conversationalIntakes/{sessionId}',
+    maxInstances: 10,
+    memory: '256MiB',
+  },
+  async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    const sessionId = event.params.sessionId;
+
+    if (!after) return;
+
+    if (after.processingStatus === 'failed' && before?.processingStatus !== 'failed') {
+      await createProcessingAlert({
+        sessionId,
+        severity: 'critical',
+        reason: 'processing_failed',
+        error: after.processingError,
+        source: after.processingSource,
+        caseId: after.caseId,
+        userId: after.userId,
+        processingErrorCategory: after.processingErrorCategory,
+        processingModel: after.processingModel,
+        processingLocation: after.processingLocation,
+        processingAttemptCount: after.processingAttemptCount,
+      });
+      logProcessingEvent('intake_processing_failed_alert', {
+        sessionId,
+        source: after.processingSource,
+        caseId: after.caseId,
+        userId: after.userId,
+        processingErrorCategory: after.processingErrorCategory,
+      }, 'error');
+    }
+
+    if (
+      after.processingStatus === 'processed'
+      && after.processingUsedFallback === true
+      && before?.processingStatus !== 'processed'
+    ) {
+      await createProcessingAlert({
+        sessionId,
+        severity: 'warning',
+        reason: 'processing_used_fallback',
+        source: after.processingSource,
+        caseId: after.caseId,
+        userId: after.userId,
+        processingErrorCategory: after.processingErrorCategory,
+        processingModel: after.processingModel,
+        processingLocation: after.processingLocation,
+        processingAttemptCount: after.processingAttemptCount,
+      });
+      logProcessingEvent('intake_processing_fallback_alert', {
+        sessionId,
+        source: after.processingSource,
+        caseId: after.caseId,
+        userId: after.userId,
+        processingErrorCategory: after.processingErrorCategory,
+      }, 'warn');
+    }
+  },
+);
+
+export const alertOnStuckConversationalIntakeProcessing = onSchedule(
+  {
+    region: 'us-central1',
+    schedule: 'every 5 minutes',
+    timeZone: 'America/New_York',
+    maxInstances: 1,
+    memory: '256MiB',
+  },
+  async () => {
+    const cutoffMs = Date.now() - 5 * 60 * 1000;
+    const snapshot = await conversationalIntakes
+      .where('processingStatus', '==', 'processing')
+      .limit(100)
+      .get();
+
+    const batch = admin.firestore().batch();
+    let alertCount = 0;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      const startedAtMs =
+        safeTimestampMillis(data.processingStartedAt)
+        ?? safeTimestampMillis(data.updatedAt)
+        ?? 0;
+
+      if (!startedAtMs || startedAtMs > cutoffMs || data.processingStuckAlertedAt) {
+        continue;
+      }
+
+      const alertRef = processingAlerts.doc(`${doc.id}-processing_stuck`);
+      batch.set(alertRef, {
+        sessionId: doc.id,
+        severity: 'critical',
+        reason: 'processing_stuck',
+        status: 'open',
+        source: cleanProcessingSource(data.processingSource),
+        caseId: cleanOptionalString(data.caseId, 200),
+        userId: cleanOptionalString(data.userId, 200),
+        processingErrorCategory: cleanOptionalString(data.processingErrorCategory, 100),
+        processingModel: cleanOptionalString(data.processingModel, 100),
+        processingLocation: cleanOptionalString(data.processingLocation, 100),
+        processingAttemptCount: cleanProcessingAttemptCount(data.processingAttemptCount),
+        error: 'Intake remained in processing for more than 5 minutes.',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+      batch.set(doc.ref, {
+        processingStuckAlertedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+      alertCount += 1;
+      logProcessingEvent('intake_processing_stuck_alert', {
+        sessionId: doc.id,
+        source: data.processingSource,
+        userId: data.userId,
+      }, 'error');
+    }
+
+    if (alertCount > 0) {
+      await batch.commit();
+    }
   },
 );
 

@@ -279,8 +279,12 @@ function nullableInteger(value: string): number | null {
 }
 
 function caseStatusFor(value: string): CaseStatus {
-  if (value.toLowerCase() === 'open') return CaseStatus.OPEN;
-  if (value.toLowerCase() === 'closed') return CaseStatus.CLOSED;
+  const normalized = value.toLowerCase();
+  if (normalized === 'open') return CaseStatus.OPEN;
+  if (normalized === 'under_review' || normalized === 'under review') {
+    return CaseStatus.UNDER_REVIEW;
+  }
+  if (normalized === 'closed') return CaseStatus.CLOSED;
   return CaseStatus.PENDING;
 }
 

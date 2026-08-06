@@ -2,6 +2,7 @@ import { ArrowUp, Check, LoaderCircle, Mic, MicOff, Paperclip, X } from 'lucide-
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { updateConversationalIntakeProcessing } from '../../agent/initialize'
+import { classifyClientProcessingError } from '../../agent/processingErrors'
 import { processIntakeIntoCase, type IntakeFile } from '../../agent/processIntake'
 import { buildVoiceIntakeDraft } from '../../agent/voiceIntakeDraft'
 import {
@@ -216,6 +217,7 @@ export default function RealtimeVoiceIntake({
       processingSessionId = await realtime.claimSession()
       await updateConversationalIntakeProcessing(processingSessionId, {
         status: 'processing',
+        source: 'voice',
       })
 
       const draft = buildVoiceIntakeDraft(realtime.messages)
@@ -229,6 +231,12 @@ export default function RealtimeVoiceIntake({
         status: 'processed',
         structuredData: processed.structured,
         caseId: processed.caseId,
+        source: 'voice',
+        processingModel: processed.processingMetadata.model,
+        processingLocation: processed.processingMetadata.location,
+        processingAttemptCount: processed.processingMetadata.attemptCount,
+        processingUsedFallback: processed.processingMetadata.usedFallback,
+        processingErrorCategory: processed.processingMetadata.errorCategory,
       })
       setProcessedCaseId(processed.caseId)
       setIntakeSaved(true)
@@ -242,6 +250,8 @@ export default function RealtimeVoiceIntake({
         await updateConversationalIntakeProcessing(processingSessionId, {
           status: 'failed',
           error: message,
+          source: 'voice',
+          processingErrorCategory: classifyClientProcessingError(message),
         }).catch(() => undefined)
       }
       setAuthError(

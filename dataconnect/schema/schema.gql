@@ -113,6 +113,7 @@ type LawyerClientAgreementFile @table {
 # Remove semicolons from Enums
 enum CaseStatus { 
   OPEN 
+  UNDER_REVIEW
   CLOSED 
   PENDING 
 }
