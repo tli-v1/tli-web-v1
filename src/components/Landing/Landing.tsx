@@ -1,19 +1,37 @@
-import { useEffect, useRef, useState } from 'react'
-import { BriefcaseBusiness, Check, FileText, MessageSquareText, Mic, Scale, X } from 'lucide-react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import {
+  BriefcaseBusiness,
+  Check,
+  Clock3,
+  FileText,
+  LockKeyhole,
+  Mic,
+  Scale,
+  SendHorizontal,
+  ShieldCheck,
+} from 'lucide-react'
 import RealtimeVoiceIntake from '../RealtimeVoiceIntake'
 import { ChatWidget } from '../ChatWidget/ChatWidget'
 import Footer from '../Footer'
 import HowItWorks from '../HowItWorks'
 import { getSession, onAuthStateChange } from '../../api/auth'
-import { trackGoogleEvent, trackIntakeStarted } from '../../analytics/googleTags'
+import {
+  trackGoogleEvent,
+  trackIntakeModeSelected,
+  trackIntakeStarted,
+} from '../../analytics/googleTags'
 import type { User } from '../../types'
 import './Landing.css'
 
 function Landing() {
   const launchTimerRef = useRef<number | null>(null)
+  const heroPromptRef = useRef<HTMLTextAreaElement | null>(null)
   const [isIntakeOpen, setIsIntakeOpen] = useState(false)
   const [isIntakeLaunching, setIsIntakeLaunching] = useState(false)
-  const [intakeMode, setIntakeMode] = useState<'text' | 'voice'>('voice')
+  const [intakeMode, setIntakeMode] = useState<'text' | 'voice'>('text')
+  const [heroPrompt, setHeroPrompt] = useState('')
+  const [initialTextPrompt, setInitialTextPrompt] = useState('')
+  const [initialVoicePrompt, setInitialVoicePrompt] = useState('')
   const [sessionUser, setSessionUser] = useState<User | null>(null)
 
   useEffect(() => {
@@ -37,88 +55,144 @@ function Landing() {
     }
   }, [])
 
-  const launchVoiceIntake = () => {
+  const launchVoiceIntake = (initialPrompt = '') => {
     if (isIntakeLaunching) return
 
     setIsIntakeLaunching(true)
     launchTimerRef.current = window.setTimeout(() => {
       launchTimerRef.current = null
+      trackIntakeModeSelected('voice')
       trackIntakeStarted('voice')
+      setInitialVoicePrompt(initialPrompt.trim())
       setIsIntakeOpen(true)
       setIsIntakeLaunching(false)
     }, 560)
   }
 
-  const launchTextIntake = () => {
+  const launchTextIntake = (initialPrompt = '') => {
     if (isIntakeLaunching) return
 
     setIsIntakeLaunching(true)
     launchTimerRef.current = window.setTimeout(() => {
       launchTimerRef.current = null
+      trackIntakeModeSelected('text')
       trackIntakeStarted('text')
+      setInitialTextPrompt(initialPrompt.trim())
       setIsIntakeOpen(true)
       setIsIntakeLaunching(false)
-    }, 560)
+    }, 240)
+  }
+
+  const handleHeroPromptSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const cleanPrompt = (heroPromptRef.current?.value ?? heroPrompt).trim()
+    trackGoogleEvent('hero_prompt_submitted', {
+      answer_length: cleanPrompt.length,
+      has_prompt: cleanPrompt.length > 0,
+    })
+    setIntakeMode('text')
+    launchTextIntake(cleanPrompt)
   }
 
   return (
     <main className="landing">
       <section
         id="home"
-        className={`hero full-height full-bleed ${isIntakeLaunching ? 'is-launching' : ''}`}>
-        <div className="hero-title">
-          <h1>The best lawyers</h1>
-          <h1 className="hero-title__emphasis">are here for you</h1>
+        className={[
+          'hero full-height full-bleed',
+          isIntakeLaunching ? 'is-launching' : '',
+          isIntakeOpen && intakeMode === 'text' ? 'is-chat-active' : '',
+        ].filter(Boolean).join(' ')}
+      >
+        <div className="hero-title" aria-hidden={isIntakeOpen && intakeMode === 'text'}>
+          <h1>Tell us what happened</h1>
+          <p className="hero-title__emphasis">We’ll build your case and connect you with top lawyers
+            competing for your case.</p>
         </div>
 
-        <div className="hero-voice-action">
-          <span className="hero-voice-label">Share what happened</span>
-          <div
-            className={`hero-mode-toggle is-${intakeMode} ${isIntakeLaunching ? 'is-launching' : ''}`}
-            role="group"
-            aria-label="Choose intake mode"
-          >
-            <span className="hero-mode-toggle__thumb" aria-hidden="true" />
-            <button
-              className={intakeMode === 'voice' ? 'hero-mode-option is-active' : 'hero-mode-option'}
-              type="button"
-              aria-label={intakeMode === 'voice' ? 'Start voice intake' : 'Use voice intake mode'}
-              aria-pressed={intakeMode === 'voice'}
-              disabled={isIntakeLaunching}
-              onClick={() => {
-                if (intakeMode === 'voice') {
-                  launchVoiceIntake()
-                  return
-                }
-                setIntakeMode('voice')
-              }}
-            >
-              <Mic aria-hidden="true" />
-              <span>Voice</span>
-            </button>
-            <button
-              className={intakeMode === 'text' ? 'hero-mode-option is-active' : 'hero-mode-option'}
-              type="button"
-              aria-label="Use text intake mode"
-              aria-pressed={intakeMode === 'text'}
-              disabled={isIntakeLaunching}
-              onClick={() => {
-                if (intakeMode === 'text') {
-                  launchTextIntake()
-                  return
-                }
-                setIntakeMode('text')
-              }}
-            >
-              <MessageSquareText aria-hidden="true" />
-              <span>Text</span>
-            </button>
-          </div>
-          <span className="hero-mode-helper">
-            {intakeMode === 'voice'
-              ? 'Tap to start · Naturally converse with our agent'
-              : "Tap to start · Best for silent texting"}
-          </span>
+        <div
+          className="hero-proof-points"
+          aria-hidden={isIntakeOpen && intakeMode === 'text'}
+          aria-label="True Legal Innovations highlights"
+        >
+          <span><Check aria-hidden="true" />100% free</span>
+          <span><Clock3 aria-hidden="true" />Takes about 3 minutes</span>
+          <span><ShieldCheck aria-hidden="true" />Reviewed by real attorneys</span>
+          <span><LockKeyhole aria-hidden="true" />No obligation</span>
+        </div>
+
+        <div className="hero-intake-stage">
+          {isIntakeOpen && intakeMode === 'text' ? (
+            <div className="hero-inline-chat" aria-label="Text intake">
+              <ChatWidget
+                key={`hero-text-intake-${initialTextPrompt || 'empty'}`}
+                user={sessionUser}
+                variant="hero"
+                intakeMode={true}
+                initialUserMessage={initialTextPrompt}
+                voiceEnabled={false}
+                onClose={() => {
+                  setIsIntakeOpen(false)
+                  setIsIntakeLaunching(false)
+                  setInitialTextPrompt('')
+                }}
+              />
+            </div>
+          ) : (
+            <form className="hero-intake-prompt" onSubmit={handleHeroPromptSubmit}>
+              <div
+                className={`hero-intake-prompt__placeholder${heroPrompt.trim() ? ' is-hidden' : ''}`}
+                aria-hidden="true"
+              >
+                <strong>Describe what happened...</strong>
+                <span className="hero-intake-prompt__examples" aria-label="Example case descriptions">
+                  <span>“Car crash caused neck pain and medical bills.”</span>
+                  <span>“Fired after reporting unsafe work conditions.”</span>
+                  <span>“Contractor kept my deposit and left repairs unfinished.”</span>
+                </span>
+              </div>
+              <textarea
+                ref={heroPromptRef}
+                id="hero-intake-prompt"
+                value={heroPrompt}
+                rows={2}
+                disabled={isIntakeLaunching}
+                aria-label="Start your legal intake"
+                placeholder=""
+                onChange={(event) => setHeroPrompt(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault()
+                    event.currentTarget.form?.requestSubmit()
+                  }
+                }}
+              />
+              <div className="hero-intake-prompt__actions">
+                <div className="hero-intake-prompt__right-actions">
+                  <button
+                    className="hero-intake-prompt__mic"
+                    type="button"
+                    aria-label="Start voice intake"
+                    disabled={isIntakeLaunching}
+                    onClick={() => {
+                      setIntakeMode('voice')
+                      launchVoiceIntake((heroPromptRef.current?.value ?? heroPrompt).trim())
+                    }}
+                  >
+                    <Mic aria-hidden="true" />
+                  </button>
+                  <button
+                    className="hero-intake-prompt__submit"
+                    type="submit"
+                    aria-label="Start text intake"
+                    disabled={isIntakeLaunching}
+                  >
+                    <SendHorizontal aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
         </div>
       </section>
 
@@ -128,7 +202,7 @@ function Landing() {
         <div className="dashboard-preview-section__inner">
           <div className="dashboard-preview-copy">
             <span className="dashboard-preview-eyebrow">After intake</span>
-            <h2 id="dashboard-preview-title">Watch your case workspace come together.</h2>
+            <h2 id="dashboard-preview-title">Watch your case come together</h2>
             <p>
               Your answers become a clear case snapshot, then we review the matter, contact matching lawyers,
               and show offers as they come in.
@@ -237,7 +311,16 @@ function Landing() {
         </div>
       </section>
 
-      {isIntakeOpen && (
+      <section className="landing-final-cta" aria-labelledby="landing-final-cta-title">
+        <div className="landing-final-cta__inner">
+          <h2 id="landing-final-cta-title">Ready to get started?</h2>
+          <a className="landing-final-cta__button" href="#home">
+            Start intake
+          </a>
+        </div>
+      </section>
+
+      {isIntakeOpen && intakeMode === 'voice' && (
         <div className="hero-chat-overlay" role="dialog" aria-modal="true" aria-label="Conversational intake">
           <button
             className="hero-chat-overlay__backdrop"
@@ -246,108 +329,30 @@ function Landing() {
             onClick={() => {
               setIsIntakeOpen(false)
               setIsIntakeLaunching(false)
+              setInitialVoicePrompt('')
             }}
           />
-          {intakeMode === 'voice' ? (
-            <RealtimeVoiceIntake
-              onFallbackToText={() => {
-                trackGoogleEvent('voice_fallback_to_text')
-                setIntakeMode('text')
-                setIsIntakeLaunching(false)
-              }}
-              onClose={() => {
-                setIsIntakeOpen(false)
-                setIsIntakeLaunching(false)
-              }}
-            />
-          ) : (
-            <TextIntakeModal
-              user={sessionUser}
-              onClose={() => {
-                setIsIntakeOpen(false)
-                setIsIntakeLaunching(false)
-              }}
-            />
-          )}
+          <RealtimeVoiceIntake
+            initialUserMessage={initialVoicePrompt}
+            onFallbackToText={() => {
+              trackGoogleEvent('voice_fallback_to_text')
+              setInitialTextPrompt(initialVoicePrompt)
+              setInitialVoicePrompt('')
+              setIntakeMode('text')
+              setIsIntakeOpen(true)
+              setIsIntakeLaunching(false)
+            }}
+            onClose={() => {
+              setIsIntakeOpen(false)
+              setIsIntakeLaunching(false)
+              setInitialVoicePrompt('')
+            }}
+          />
         </div>
       )}
 
       <Footer />
     </main>
-  )
-}
-
-interface TextIntakeModalProps {
-  user: User | null
-  onClose: () => void
-}
-
-function TextIntakeModal({ user, onClose }: TextIntakeModalProps) {
-  const [stage, setStage] = useState<'loading' | 'ready' | 'chat'>('loading')
-
-  useEffect(() => {
-    const readyTimer = window.setTimeout(() => setStage('ready'), 900)
-    const chatTimer = window.setTimeout(() => setStage('chat'), 2050)
-
-    return () => {
-      window.clearTimeout(readyTimer)
-      window.clearTimeout(chatTimer)
-    }
-  }, [])
-
-  if (stage !== 'chat') {
-    return (
-      <section
-        className={`realtime-intake ${
-          stage === 'ready' ? 'realtime-intake--all-set' : 'realtime-intake--loading'
-        }`}
-        aria-label="Preparing text legal intake"
-        aria-live="polite"
-      >
-        <button
-          className="realtime-intake__close realtime-intake__loading-close"
-          type="button"
-          onClick={onClose}
-          aria-label="Close text intake"
-        >
-          <X aria-hidden="true" />
-        </button>
-        {stage === 'ready' ? (
-          <div className="realtime-intake__loading-content realtime-intake__all-set-content">
-            <div className="realtime-intake__loading-mark realtime-intake__all-set-mark" aria-hidden="true">
-              <Check />
-            </div>
-            <h2>All Set!</h2>
-            <p>Our agent is ready to chat.</p>
-          </div>
-        ) : (
-          <div className="realtime-intake__loading-content">
-            <div className="realtime-intake__loading-mark" aria-hidden="true">
-              <MessageSquareText />
-            </div>
-            <h2>Getting things ready for you!</h2>
-            <p>Our agent will be with you in just a moment</p>
-            <span className="realtime-intake__loading-dots" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-          </div>
-        )}
-      </section>
-    )
-  }
-
-  return (
-    <div className="text-intake-modal__chat">
-      <ChatWidget
-        user={user}
-        variant="hero"
-        intakeMode
-        voiceEnabled={false}
-        onClose={onClose}
-      />
-    </div>
   )
 }
 

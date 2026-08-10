@@ -5,15 +5,16 @@ import {
   ensureRealtimeIntakeSession,
   persistRealtimeMessage,
 } from '../api/realtime'
+import { trackIntakeQuestionAnswered } from '../analytics/googleTags'
 import { normalizeVoiceTranscript } from '../utils/voiceTranscript'
 
 const MAX_SESSION_MS = 8 * 60 * 1000
 const MAX_USER_TURNS = 20
-const MAX_TOTAL_USER_CHARACTERS = 6000
-const MAX_USER_MESSAGE_CHARACTERS = 800
+const MAX_TOTAL_USER_CHARACTERS = 8000
+const MAX_USER_MESSAGE_CHARACTERS = 2400
 const WARNING_SESSION_MS = 6 * 60 * 1000
 const WARNING_USER_TURNS = 16
-const WARNING_TOTAL_USER_CHARACTERS = 4800
+const WARNING_TOTAL_USER_CHARACTERS = 6400
 const CONNECTION_TIMEOUT_MS = 20 * 1000
 const DISCONNECT_GRACE_MS = 5 * 1000
 const VOICE_UNAVAILABLE_MESSAGE =
@@ -25,12 +26,14 @@ For the first and second irrelevant answer, briefly redirect to the same questio
 For the third consecutive irrelevant answer, say exactly: "I’m going to pause this intake because the responses are not related to the questions. You can start again when you’re ready." Do not ask another question.
 Reset the count after a plausibly relevant answer. Ignore silence, background noise, isolated filler sounds, and unintelligible audio. Never infer an answer from them. Keep every response under 80 spoken words.
 Do not ask the user to speak or type an email address. Account email is collected by the secure form.
-Follow this intake order and do not skip ahead: what happened; when; where; involved people or organizations; insurance or claim information; injuries, treatment, expenses, property damage, work or income loss, emotional effects, and other losses; then one generic optional file-upload step; then full name; then phone number; then preferred contact method; then consent.
-During contact collection, ask "What is the best phone number to reach you?" as its own focused question. Ask it even if the user prefers email, and accept that they may decline or not know it. Afterward, separately ask whether they prefer email, a phone call, or a text message. Do not treat the preferred contact method as the phone-number answer.
-The file-upload step must not occur until the incident, timing, location, parties, insurance, injuries, treatment, and damages questions have been addressed. At that point, ask once whether the user wants to attach any relevant files, such as reports, medical records or bills, photos, videos, insurance documents, receipts, or correspondence. Tell them the attachment button and health-information authorization are below. Explain that selected files remain pending and are securely submitted only after the user signs in or creates an account at the end. Do not ask for file categories separately, do not request each file type individually, and do not revisit uploads after that step. Continue normally if they have no files or want to upload later.
+Follow this short intake order and do not skip ahead: first ask what happened; then ask where it happened. Do not ask separate questions for date, parties, insurance, damages, files, name, phone, preferred contact, or consent. Those details can be edited or uploaded later in the dashboard.
 When the legal intake is complete, say exactly: "Your intake is complete and ready to save. Please use the secure form below to sign in or create an account." Do not ask another question.`
 const INTAKE_COMPLETE_PATTERN =
   /\b(intake is complete|intake complete|complete and ready to save|ready for processing)\b/i
+const voiceQuestionSteps = [
+  'whatHappened',
+  'location',
+] as const
 
 export interface RealtimeVoiceMessage {
   id: string
@@ -57,6 +60,10 @@ interface RealtimeServerEvent {
 interface PendingAssistantMessage {
   eventId: string
   content: string
+}
+
+interface RealtimeStartOptions {
+  initialUserMessage?: string
 }
 
 export function useRealtimeVoice() {
@@ -198,7 +205,10 @@ export function useRealtimeVoice() {
     setLimitReason(message)
   }, [])
 
-  const registerUserInput = useCallback((content: string) => {
+  const registerUserInput = useCallback((
+    content: string,
+    inputMethod: 'voice' | 'typed',
+  ) => {
     if (content.length > MAX_USER_MESSAGE_CHARACTERS) {
       setError(`Please keep each response under ${MAX_USER_MESSAGE_CHARACTERS} characters.`)
       return false
@@ -214,6 +224,16 @@ export function useRealtimeVoice() {
 
     userTurnCountRef.current += 1
     totalUserCharactersRef.current += content.length
+    const questionIndex = Math.min(userTurnCountRef.current, voiceQuestionSteps.length)
+    const questionId = voiceQuestionSteps[questionIndex - 1] ?? 'additionalResponse'
+
+    trackIntakeQuestionAnswered('voice', {
+      questionId,
+      questionIndex,
+      answerLength: content.length,
+      complete: questionIndex >= voiceQuestionSteps.length,
+      inputMethod,
+    })
 
     const turnsRemaining = MAX_USER_TURNS - userTurnCountRef.current
     const charactersRemaining =
@@ -315,7 +335,7 @@ export function useRealtimeVoice() {
       || dataChannel.readyState !== 'open'
       || respondingRef.current
       || limitReason
-      || !registerUserInput(cleanContent)
+      || !registerUserInput(cleanContent, 'typed')
     ) {
       return false
     }
@@ -370,7 +390,7 @@ export function useRealtimeVoice() {
       setIsProcessingUserInput(false)
       const cleanTranscript = normalizeVoiceTranscript(event.transcript)
       const dataChannel = dataChannelRef.current
-      if (!cleanTranscript || !registerUserInput(cleanTranscript)) return
+      if (!cleanTranscript || !registerUserInput(cleanTranscript, 'voice')) return
 
       void persistMessage(
         'user',
@@ -485,8 +505,9 @@ export function useRealtimeVoice() {
     return sessionId
   }, [ensureSession])
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (options: RealtimeStartOptions = {}) => {
     if (startingRef.current || connectedRef.current) return
+    const initialUserMessage = options.initialUserMessage?.replace(/\s+/g, ' ').trim() ?? ''
     const connectionAttempt = connectionAttemptRef.current + 1
     connectionAttemptRef.current = connectionAttempt
     startingRef.current = true
@@ -617,13 +638,29 @@ export function useRealtimeVoice() {
             },
           },
         }))
-        dataChannel.send(JSON.stringify({
-          type: 'response.create',
-          response: {
-            instructions:
-              'Greet the user briefly, explain that you will ask one question at a time, and ask what happened.',
-          },
-        }))
+        if (initialUserMessage) {
+          const sentInitialMessage = sendTextMessage(initialUserMessage, {
+            preserveMicrophone: true,
+          })
+
+          if (!sentInitialMessage) {
+            dataChannel.send(JSON.stringify({
+              type: 'response.create',
+              response: {
+                instructions:
+                  'Greet the user briefly, explain that you will ask one question at a time, and ask what happened.',
+              },
+            }))
+          }
+        } else {
+          dataChannel.send(JSON.stringify({
+            type: 'response.create',
+            response: {
+              instructions:
+                'Greet the user briefly, explain that you will ask one question at a time, and ask what happened.',
+            },
+          }))
+        }
       })
       dataChannel.addEventListener('error', () => {
         failConnection('The realtime data connection failed. Try reconnecting.')
@@ -695,7 +732,7 @@ export function useRealtimeVoice() {
           : 'The voice connection timed out. Check your network and try again.',
       )
     }
-  }, [ensureSession, handleServerEvent, lockUserInput, publicConnectionError, stop])
+  }, [ensureSession, handleServerEvent, lockUserInput, publicConnectionError, sendTextMessage, stop])
 
   useEffect(() => stop, [stop])
 

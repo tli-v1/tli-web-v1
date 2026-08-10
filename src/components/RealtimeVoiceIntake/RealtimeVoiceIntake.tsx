@@ -36,6 +36,7 @@ import PasswordRequirements from '../PasswordRequirements/PasswordRequirements'
 import './RealtimeVoiceIntake.css'
 
 interface RealtimeVoiceIntakeProps {
+  initialUserMessage?: string
   onClose: () => void
   onFallbackToText?: () => void
 }
@@ -46,6 +47,7 @@ const FILE_UPLOAD_PROMPT_PATTERN =
   /\b(?:attach|upload|add|provide|share|select|choose)\b[\s\S]{0,120}\b(?:files?|documents?|evidence|photos?|photographs?|videos?|records?|reports?|bills?|receipts?|contracts?|correspondence|attachments?)\b|\b(?:files?|documents?|evidence|photos?|photographs?|videos?|records?|reports?|bills?|receipts?|contracts?|correspondence|attachments?)\b[\s\S]{0,120}\b(?:attach|upload|add|provide|share|select|choose)\b/i
 
 export default function RealtimeVoiceIntake({
+  initialUserMessage,
   onClose,
   onFallbackToText,
 }: RealtimeVoiceIntakeProps) {
@@ -84,7 +86,7 @@ export default function RealtimeVoiceIntake({
   }, [realtime.messages])
 
   useEffect(() => {
-    void realtime.start()
+    void realtime.start({ initialUserMessage })
     // This session starts once when the microphone overlay opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -115,6 +117,13 @@ export default function RealtimeVoiceIntake({
     && !realtime.hasAssistantStarted
     && realtime.messages.length === 0
   )
+  const answeredQuestionCount = realtime.messages.filter((message) => message.role === 'user').length
+  const progressStep =
+    realtime.isIntakeComplete || intakeSaved || processedCaseId || answeredQuestionCount >= 2
+      ? 3
+      : answeredQuestionCount >= 1
+        ? 2
+        : 1
 
   useEffect(() => {
     if (isPreparing) {
@@ -221,8 +230,15 @@ export default function RealtimeVoiceIntake({
       })
 
       const draft = buildVoiceIntakeDraft(realtime.messages)
+      const consentedDraft = {
+        answers: {
+          ...draft.answers,
+          consent: draft.answers.consent
+            || 'Yes. User continued by signing in or creating an account after the short intake.',
+        },
+      }
       const processed = await processIntakeIntoCase({
-        draft,
+        draft: consentedDraft,
         files: [],
         prepareFiles: (caseId) => uploadPendingFiles(user, caseId),
         user,
@@ -446,6 +462,21 @@ export default function RealtimeVoiceIntake({
           <X aria-hidden="true" />
         </button>
       </header>
+
+      <div className="realtime-intake__progress" aria-label={`Intake step ${progressStep} of 3`}>
+        <span className={progressStep >= 1 ? 'is-active' : ''}>
+          <i>1</i>
+          <strong>What happened</strong>
+        </span>
+        <span className={progressStep >= 2 ? 'is-active' : ''}>
+          <i>2</i>
+          <strong>Where</strong>
+        </span>
+        <span className={progressStep >= 3 ? 'is-active' : ''}>
+          <i>3</i>
+          <strong>Account</strong>
+        </span>
+      </div>
 
       <div className="realtime-intake__messages" aria-live="polite">
         {realtime.messages.map((message) => (

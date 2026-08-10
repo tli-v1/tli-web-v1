@@ -74,6 +74,14 @@ export function getAllIntakeQuestions(): string[] {
   return stepOrder.map((step) => questions[step])
 }
 
+export function getIntakeStepIndex(step: ChatIntakeStep): number {
+  return stepOrder.indexOf(step) + 1
+}
+
+export function getIntakeStepCount(): number {
+  return stepOrder.length
+}
+
 export function isChatIntakeComplete(draft: ChatIntakeDraft): boolean {
   return getNextIntakeStep(draft) === null
 }

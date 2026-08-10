@@ -27,6 +27,7 @@ import {
   getAllIntakeQuestions,
   getInitialIntakeQuestion,
   getIntakeQuestion,
+  getIntakeStepIndex,
   getNextIntakeStep,
   isIntakeRequest,
   type ChatIntakeDraft,
@@ -61,6 +62,7 @@ import {
   trackCaseSubmitted,
   trackFileSelected,
   trackIntakeCompleted,
+  trackIntakeQuestionAnswered,
 } from '../../analytics/googleTags'
 import {
   ACCEPTED_CASE_FILE_TYPES,
@@ -84,6 +86,7 @@ interface Message {
 interface ChatWidgetProps {
   user: User | null
   initialMessage?: string
+  initialUserMessage?: string
   variant?: 'embedded' | 'floating' | 'hero'
   intakeMode?: boolean
   voiceEnabled?: boolean
@@ -98,10 +101,13 @@ interface AttachedFile {
 const welcomeMessageId = 'minerva-welcome'
 const defaultInitialMessage =
   "Hi, I'm your intake agent. Tell me what happened, and I can guide you through a conversational intake."
+const consentAnswerFromAccount =
+  'Yes. User continued by signing in or creating an account after the short intake.'
 
 export function ChatWidget({
   user,
   initialMessage,
+  initialUserMessage,
   variant = 'embedded',
   intakeMode = false,
   voiceEnabled = true,
@@ -151,6 +157,12 @@ export function ChatWidget({
   const [intakeStep, setIntakeStep] = useState<ChatIntakeStep | null>(
     startsInIntake ? 'whatHappened' : null,
   )
+  const progressStep =
+    awaitingProcessingSignIn || intakeStep === null || isProcessingIntake || processedCaseId
+      ? 3
+      : intakeStep === 'location'
+        ? 2
+        : 1
   const messagesRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -161,6 +173,7 @@ export function ChatWidget({
   const sendMessageRef = useRef<(content?: string) => void>(() => undefined)
   const speakRef = useRef<(content: string) => void>(() => undefined)
   const resumeListeningRef = useRef(false)
+  const initialUserMessageSentRef = useRef(false)
 
   useEffect(() => {
     if (!startsInIntake) setAuthenticatedUser(user)
@@ -308,8 +321,14 @@ export function ChatWidget({
         status: 'processing',
         source: 'text',
       })
+      const consentedDraft: ChatIntakeDraft = {
+        answers: {
+          ...completedDraft.answers,
+          consent: completedDraft.answers.consent || consentAnswerFromAccount,
+        },
+      }
       const processed = await processIntakeIntoCase({
-        draft: completedDraft,
+        draft: consentedDraft,
         files: attachedFiles,
         prepareFiles: async (caseId) => {
           if (pendingFiles.length === 0) return []
@@ -541,15 +560,23 @@ export function ChatWidget({
     setIntakeDraft(result.draft)
     const nextStep = getNextIntakeStep(result.draft)
     setIntakeStep(nextStep)
+    trackIntakeQuestionAnswered('text', {
+      questionId: activeStep,
+      questionIndex: getIntakeStepIndex(activeStep),
+      answerLength: userMessage.content.length,
+      complete: nextStep === null,
+      fileCount: attachedFiles.length + pendingFiles.length,
+      inputMethod: voiceInput.enabled && !isManualInput ? 'voice' : 'typed',
+    })
 
     const assistantContent = nextStep
       ? getIntakeQuestion(nextStep)
-      : `${buildIntakeSummary(result.draft)}\n\nYour conversational intake has been saved. We can structure and review these details later without making you repeat the story.`
+      : `${buildIntakeSummary(result.draft)}\n\nThat is enough to create your case workspace. Create an account or sign in below, then you can edit details and upload files from your dashboard.`
     const assistantMessage = appendAssistantMessage(
       assistantContent,
       nextStep
         ? assistantContent
-        : 'Your conversational intake is complete and has been saved. We can review and structure the details later without making you repeat your story.',
+        : 'That is enough to create your case workspace. Create an account or sign in below, then you can edit details and upload files from your dashboard.',
     )
 
     const savedSessionId = await persistExchange(userMessage, assistantMessage, {
@@ -639,6 +666,34 @@ export function ChatWidget({
     void sendMessage(content)
   }
 
+  useEffect(() => {
+    const cleanInitialUserMessage = initialUserMessage?.trim()
+    if (
+      !startsInIntake
+      || !cleanInitialUserMessage
+      || initialUserMessageSentRef.current
+    ) {
+      return undefined
+    }
+
+    const timer = window.setTimeout(() => {
+      initialUserMessageSentRef.current = true
+      const userMessage: Message = {
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: cleanInitialUserMessage,
+        timestamp: new Date(),
+      }
+
+      inputRef.current = ''
+      setInput('')
+      setMessages((current) => [...current, userMessage])
+      void handleIntakeAnswer(userMessage, intakeStep ?? 'whatHappened')
+    }, 0)
+
+    return () => window.clearTimeout(timer)
+  }, [handleIntakeAnswer, initialUserMessage, intakeStep, startsInIntake])
+
   const close = () => {
     if (autoSubmitTimerRef.current !== null) {
       window.clearTimeout(autoSubmitTimerRef.current)
@@ -711,7 +766,7 @@ export function ChatWidget({
       <header className="chat-widget__header">
         <div>
           <h2>Share what happened</h2>
-          <p>{voiceEnabled ? 'Conversational intake · voice or text' : 'Conversational intake · text only'}</p>
+          <p>{voiceEnabled ? 'Quick intake · voice or text' : 'Tell us all relevant details'}</p>
         </div>
         <div className="chat-widget__header-actions">
           {voiceEnabled && (
@@ -739,6 +794,23 @@ export function ChatWidget({
           </button>
         </div>
       </header>
+
+      {startsInIntake && (
+        <div className="chat-widget__progress" aria-label={`Intake step ${progressStep} of 3`}>
+          <span className={progressStep >= 1 ? 'is-active' : ''}>
+            <i>1</i>
+            <strong>What happened</strong>
+          </span>
+          <span className={progressStep >= 2 ? 'is-active' : ''}>
+            <i>2</i>
+            <strong>Where</strong>
+          </span>
+          <span className={progressStep >= 3 ? 'is-active' : ''}>
+            <i>3</i>
+            <strong>Account</strong>
+          </span>
+        </div>
+      )}
 
       <div
         ref={messagesRef}
@@ -795,6 +867,9 @@ export function ChatWidget({
             onSelect={handleSocialAuth}
           />
           <div className="chat-widget__auth-fields">
+            <p className="chat-widget__auth-consent">
+              By continuing, you consent to True Legal storing this intake and contacting you about this matter.
+            </p>
             <label>
               <span>Email</span>
               <input

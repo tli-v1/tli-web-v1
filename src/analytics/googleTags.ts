@@ -21,8 +21,23 @@ export function trackGoogleEvent(
   window.gtag('event', eventName, params)
 }
 
+function toAnalyticsEventSuffix(value: string) {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase()
+    .slice(0, 25)
+}
+
 export function trackIntakeStarted(mode: 'voice' | 'text' | 'form') {
   trackGoogleEvent('intake_started', {
+    intake_mode: mode,
+  })
+}
+
+export function trackIntakeModeSelected(mode: 'voice' | 'text') {
+  trackGoogleEvent('intake_mode_selected', {
     intake_mode: mode,
   })
 }
@@ -31,6 +46,33 @@ export function trackIntakeCompleted(mode: 'voice' | 'text' | 'form') {
   trackGoogleEvent('intake_completed', {
     intake_mode: mode,
   })
+}
+
+export function trackIntakeQuestionAnswered(
+  mode: 'voice' | 'text',
+  options: {
+    questionId: string
+    questionIndex: number
+    answerLength: number
+    complete?: boolean
+    fileCount?: number
+    inputMethod?: 'voice' | 'typed'
+  },
+) {
+  const eventParams = {
+    intake_mode: mode,
+    input_method: options.inputMethod ?? mode,
+    question_id: options.questionId,
+    question_index: options.questionIndex,
+    answer_length: options.answerLength,
+    is_complete_after_answer: Boolean(options.complete),
+    file_count: options.fileCount ?? 0,
+    has_files: (options.fileCount ?? 0) > 0,
+  }
+  const questionEventName = `intake_answer_${toAnalyticsEventSuffix(options.questionId)}`
+
+  trackGoogleEvent('intake_question_answered', eventParams)
+  trackGoogleEvent(questionEventName, eventParams)
 }
 
 export function trackCaseSubmitted(
