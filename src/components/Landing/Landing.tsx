@@ -21,6 +21,7 @@ import {
   trackIntakeStarted,
 } from '../../analytics/googleTags'
 import type { User } from '../../types'
+import readyToStartGraphic from '../../assets/ready_to_start_graphic.png'
 import './Landing.css'
 
 function Landing() {
@@ -53,6 +54,35 @@ function Landing() {
       isMounted = false
       unsubscribe()
     }
+  }, [])
+
+  useEffect(() => {
+    if (!('IntersectionObserver' in window)) {
+      document.querySelectorAll<HTMLElement>('.landing-reveal').forEach((element) => {
+        element.classList.add('is-visible')
+      })
+      return
+    }
+
+    const revealElements = Array.from(document.querySelectorAll<HTMLElement>('.landing-reveal'))
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible')
+            observer.unobserve(entry.target)
+          }
+        })
+      },
+      {
+        threshold: 0.16,
+        rootMargin: '0px 0px -12% 0px',
+      },
+    )
+
+    revealElements.forEach((element) => observer.observe(element))
+
+    return () => observer.disconnect()
   }, [])
 
   const launchVoiceIntake = (initialPrompt = '') => {
@@ -198,7 +228,7 @@ function Landing() {
 
       <HowItWorks />
 
-      <section className="dashboard-preview-section" aria-labelledby="dashboard-preview-title">
+      <section className="dashboard-preview-section landing-reveal" aria-labelledby="dashboard-preview-title">
         <div className="dashboard-preview-section__inner">
           <div className="dashboard-preview-copy">
             <span className="dashboard-preview-eyebrow">After intake</span>
@@ -311,12 +341,53 @@ function Landing() {
         </div>
       </section>
 
-      <section className="landing-final-cta" aria-labelledby="landing-final-cta-title">
+      <section className="landing-final-cta landing-reveal" aria-labelledby="landing-final-cta-title">
         <div className="landing-final-cta__inner">
-          <h2 id="landing-final-cta-title">Ready to get started?</h2>
-          <a className="landing-final-cta__button" href="#home">
-            Start intake
-          </a>
+          <span className="landing-final-cta__eyebrow">The problem we fix</span>
+          <h2 id="landing-final-cta-title">The truth about billboards</h2>
+          <p>
+            High-volume law firms spend millions on ads, not always on your case. Here’s what that can mean for you.
+          </p>
+
+          <div className="landing-final-cta__story" aria-label="Why matching with focused attorneys matters">
+            <article className="landing-final-cta__story-card">
+              <h3>1. They spend big on ads</h3>
+              <p>Millions go into flashy billboards and TV commercials.</p>
+              <div className="landing-final-cta__graphic-panel is-billboard" aria-hidden="true">
+                <img src={readyToStartGraphic} alt="" loading="lazy" decoding="async" />
+              </div>
+            </article>
+
+            <article className="landing-final-cta__story-card">
+              <h3>2. They make big promises</h3>
+              <p>Sound Familiar? Fast settlements. Top dollar. We’ll handle everything.</p>
+              <div className="landing-final-cta__graphic-panel is-promises" aria-hidden="true">
+                <img src={readyToStartGraphic} alt="" loading="lazy" decoding="async" />
+              </div>
+            </article>
+
+            <article className="landing-final-cta__story-card">
+              <h3>3. You get less attention</h3>
+              <p>Insurance companies know they can lowball your case.</p>
+              <div className="landing-final-cta__graphic-panel is-settlement" aria-hidden="true">
+                <img src={readyToStartGraphic} alt="" loading="lazy" decoding="async" />
+              </div>
+            </article>
+          </div>
+
+          <div className="landing-final-cta__bottom">
+            <div className="landing-final-cta__shield" aria-hidden="true">✓</div>
+            <div>
+              <strong>You deserve better.</strong>
+              <p>We connect you with qualified attorneys who focus on your case, not their ads.</p>
+            </div>
+            <div className="landing-final-cta__action">
+              <a className="landing-final-cta__button" href="#home">
+                Start free intake
+              </a>
+              <small>100% free · No obligation · Private &amp; secure</small>
+            </div>
+          </div>
         </div>
       </section>
 
