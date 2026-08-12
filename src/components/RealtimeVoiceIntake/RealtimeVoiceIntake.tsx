@@ -1,5 +1,5 @@
 import { ArrowUp, Check, LoaderCircle, Mic, MicOff, Paperclip, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { updateConversationalIntakeProcessing } from '../../agent/initialize'
 import { classifyClientProcessingError } from '../../agent/processingErrors'
@@ -75,6 +75,8 @@ export default function RealtimeVoiceIntake({
   const [healthNoticeAccepted, setHealthNoticeAccepted] = useState(false)
 
   const showFileUpload = useMemo(() => {
+    if (realtime.currentQuestionId === 'documents') return true
+
     const latestAssistantMessage = [...realtime.messages]
       .reverse()
       .find((message) => message.role === 'assistant')
@@ -83,7 +85,7 @@ export default function RealtimeVoiceIntake({
       latestAssistantMessage
       && FILE_UPLOAD_PROMPT_PATTERN.test(latestAssistantMessage.content),
     )
-  }, [realtime.messages])
+  }, [realtime.currentQuestionId, realtime.messages])
 
   useEffect(() => {
     void realtime.start({ initialUserMessage })
@@ -112,18 +114,22 @@ export default function RealtimeVoiceIntake({
     onFallbackToText?.()
   }
 
+  const resumeVoice = () => {
+    void realtime.start({ resume: true })
+  }
+
   const isPreparing = (
     (realtime.status === 'connecting' || realtime.status === 'connected')
     && !realtime.hasAssistantStarted
     && realtime.messages.length === 0
   )
+  const intakeQuestionCount = 9
   const answeredQuestionCount = realtime.messages.filter((message) => message.role === 'user').length
-  const progressStep =
-    realtime.isIntakeComplete || intakeSaved || processedCaseId || answeredQuestionCount >= 2
-      ? 3
-      : answeredQuestionCount >= 1
-        ? 2
-        : 1
+  const completedQuestionCount =
+    realtime.isIntakeComplete || intakeSaved || processedCaseId
+      ? intakeQuestionCount
+      : Math.min(answeredQuestionCount, intakeQuestionCount)
+  const progressPercent = Math.round((completedQuestionCount / intakeQuestionCount) * 100)
 
   useEffect(() => {
     if (isPreparing) {
@@ -233,8 +239,8 @@ export default function RealtimeVoiceIntake({
       const consentedDraft = {
         answers: {
           ...draft.answers,
-          consent: draft.answers.consent
-            || 'Yes. User continued by signing in or creating an account after the short intake.',
+            consent: draft.answers.consent
+            || 'Yes. User continued by signing in or creating an account after the intake.',
         },
       }
       const processed = await processIntakeIntoCase({
@@ -463,19 +469,23 @@ export default function RealtimeVoiceIntake({
         </button>
       </header>
 
-      <div className="realtime-intake__progress" aria-label={`Intake step ${progressStep} of 3`}>
-        <span className={progressStep >= 1 ? 'is-active' : ''}>
-          <i>1</i>
-          <strong>What happened</strong>
-        </span>
-        <span className={progressStep >= 2 ? 'is-active' : ''}>
-          <i>2</i>
-          <strong>Where</strong>
-        </span>
-        <span className={progressStep >= 3 ? 'is-active' : ''}>
-          <i>3</i>
-          <strong>Account</strong>
-        </span>
+      <div
+        className="realtime-intake__progress"
+        aria-label={`Intake ${progressPercent}% complete`}
+        style={{ '--intake-progress': `${progressPercent}%` } as CSSProperties}
+      >
+        <div>
+          <span>Intake progress</span>
+          <strong>{progressPercent}%</strong>
+        </div>
+        <div className="realtime-intake__progress-track" aria-hidden="true">
+          <i />
+        </div>
+        <small>
+          {completedQuestionCount >= intakeQuestionCount
+            ? 'Ready to save'
+            : `Question ${Math.min(completedQuestionCount + 1, intakeQuestionCount)} of ${intakeQuestionCount}`}
+        </small>
       </div>
 
       <div className="realtime-intake__messages" aria-live="polite">
@@ -799,7 +809,16 @@ export default function RealtimeVoiceIntake({
           </div>
         )}
 
-        {(uploadedFiles.length > 0 || uploadError || realtime.status === 'error') && (
+        {(uploadedFiles.length > 0
+          || uploadError
+          || realtime.status === 'error'
+          || (
+            realtime.status === 'idle'
+            && realtime.supported
+            && !realtime.isIntakeComplete
+            && !intakeSaved
+            && !processedCaseId
+          )) && (
           <div className="realtime-intake__footer-status">
           {uploadedFiles.length > 0 && (
             <p className="realtime-intake__upload-success">
@@ -822,9 +841,31 @@ export default function RealtimeVoiceIntake({
                 <button
                   className="realtime-intake__retry"
                   type="button"
-                  onClick={() => void realtime.start()}
+                  onClick={resumeVoice}
                 >
                   Try voice again
+                </button>
+              </div>
+            )}
+            {realtime.status === 'idle'
+              && realtime.supported
+              && !realtime.isIntakeComplete
+              && !intakeSaved
+              && !processedCaseId && (
+              <div className="realtime-intake__fallback-actions">
+                <button
+                  className="realtime-intake__resume"
+                  type="button"
+                  onClick={resumeVoice}
+                >
+                  Resume voice intake
+                </button>
+                <button
+                  className="realtime-intake__fallback"
+                  type="button"
+                  onClick={continueByText}
+                >
+                  Continue by text
                 </button>
               </div>
             )}

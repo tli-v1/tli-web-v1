@@ -6,17 +6,18 @@ import {
   persistRealtimeMessage,
 } from '../api/realtime'
 import { trackIntakeQuestionAnswered } from '../analytics/googleTags'
+import { normalizeSpokenAmounts } from '../utils/spokenAmounts'
 import { normalizeVoiceTranscript } from '../utils/voiceTranscript'
 
-const MAX_SESSION_MS = 8 * 60 * 1000
+const MAX_SESSION_MS = 12 * 60 * 1000
 const MAX_USER_TURNS = 20
 const MAX_TOTAL_USER_CHARACTERS = 8000
 const MAX_USER_MESSAGE_CHARACTERS = 2400
-const WARNING_SESSION_MS = 6 * 60 * 1000
+const WARNING_SESSION_MS = 10 * 60 * 1000
 const WARNING_USER_TURNS = 16
 const WARNING_TOTAL_USER_CHARACTERS = 6400
-const CONNECTION_TIMEOUT_MS = 20 * 1000
-const DISCONNECT_GRACE_MS = 5 * 1000
+const CONNECTION_TIMEOUT_MS = 30 * 1000
+const DISCONNECT_GRACE_MS = 25 * 1000
 const VOICE_UNAVAILABLE_MESSAGE =
   'Voice is temporarily unavailable. You can continue this intake by text.'
 const OFF_TOPIC_ENDING =
@@ -26,14 +27,23 @@ For the first and second irrelevant answer, briefly redirect to the same questio
 For the third consecutive irrelevant answer, say exactly: "I’m going to pause this intake because the responses are not related to the questions. You can start again when you’re ready." Do not ask another question.
 Reset the count after a plausibly relevant answer. Ignore silence, background noise, isolated filler sounds, and unintelligible audio. Never infer an answer from them. Keep every response under 80 spoken words.
 Do not ask the user to speak or type an email address. Account email is collected by the secure form.
-Follow this short intake order and do not skip ahead: first ask what happened; then ask where it happened. Do not ask separate questions for date, parties, insurance, damages, files, name, phone, preferred contact, or consent. Those details can be edited or uploaded later in the dashboard.
+Follow this intake order and do not skip ahead: first ask what happened; then when it happened; then where it happened; then who else was involved; then insurance or claim information; then files or notes; then injuries, treatment, expenses, missed work, property damage, emotional effects, and other losses; then name, phone if provided, and preferred contact method; then consent to securely store the information and contact the user about next steps.
+Keep each question concise. If the user says they do not know or do not have optional information, accept that answer and move on.
 When the legal intake is complete, say exactly: "Your intake is complete and ready to save. Please use the secure form below to sign in or create an account." Do not ask another question.`
 const INTAKE_COMPLETE_PATTERN =
   /\b(intake is complete|intake complete|complete and ready to save|ready for processing)\b/i
 const voiceQuestionSteps = [
   'whatHappened',
+  'incidentDate',
   'location',
+  'adverseParty',
+  'insurerInfo',
+  'documents',
+  'damages',
+  'contact',
+  'consent',
 ] as const
+export type RealtimeVoiceQuestionStep = typeof voiceQuestionSteps[number]
 
 export interface RealtimeVoiceMessage {
   id: string
@@ -64,6 +74,7 @@ interface PendingAssistantMessage {
 
 interface RealtimeStartOptions {
   initialUserMessage?: string
+  resume?: boolean
 }
 
 export function useRealtimeVoice() {
@@ -97,6 +108,11 @@ export function useRealtimeVoice() {
   const pendingInputLockRef = useRef('')
   const pendingAssistantMessagesRef = useRef(new Map<string, PendingAssistantMessage[]>())
   const responsePausedLiveMicrophoneRef = useRef(false)
+  const currentQuestionId: RealtimeVoiceQuestionStep | null = isIntakeComplete
+    ? null
+    : voiceQuestionSteps[
+      Math.min(userTurnCountRef.current, voiceQuestionSteps.length - 1)
+    ] ?? null
 
   const publicConnectionError = useCallback((message: string) => {
     const normalized = message.toLowerCase()
@@ -123,7 +139,11 @@ export function useRealtimeVoice() {
     content: string,
     eventId: string,
   ) => {
-    const cleanContent = content.replace(/\s+/g, ' ').trim()
+    const cleanContent = (
+      role === 'user'
+        ? normalizeSpokenAmounts(content)
+        : content
+    ).replace(/\s+/g, ' ').trim()
     if (!cleanContent || persistedEventIdsRef.current.has(eventId)) return
     persistedEventIdsRef.current.add(eventId)
 
@@ -143,7 +163,7 @@ export function useRealtimeVoice() {
   }, [])
 
   const editMessage = useCallback((messageId: string, content: string) => {
-    const cleanContent = content.replace(/\s+/g, ' ').trim()
+    const cleanContent = normalizeSpokenAmounts(content).replace(/\s+/g, ' ').trim()
     if (!cleanContent) return false
 
     setMessages((current) => current.map((message) => (
@@ -284,7 +304,7 @@ export function useRealtimeVoice() {
     event: RealtimeServerEvent,
     content: string,
   ) => {
-    const cleanContent = content.replace(/\s+/g, ' ').trim()
+    const cleanContent = normalizeSpokenAmounts(content).replace(/\s+/g, ' ').trim()
     if (!cleanContent) return
 
     const responseId = event.response_id || event.response?.id || event.item_id || event.event_id
@@ -326,7 +346,7 @@ export function useRealtimeVoice() {
     content: string,
     options: { preserveMicrophone?: boolean } = {},
   ) => {
-    const cleanContent = content.replace(/\s+/g, ' ').trim()
+    const cleanContent = normalizeSpokenAmounts(content).replace(/\s+/g, ' ').trim()
     const dataChannel = dataChannelRef.current
 
     if (
@@ -508,19 +528,24 @@ export function useRealtimeVoice() {
   const start = useCallback(async (options: RealtimeStartOptions = {}) => {
     if (startingRef.current || connectedRef.current) return
     const initialUserMessage = options.initialUserMessage?.replace(/\s+/g, ' ').trim() ?? ''
+    const shouldResume = Boolean(options.resume)
     const connectionAttempt = connectionAttemptRef.current + 1
     connectionAttemptRef.current = connectionAttempt
     startingRef.current = true
     setStatus('connecting')
     setError('')
-    setHasAssistantStarted(false)
+    setHasAssistantStarted(shouldResume && messages.length > 0)
     setLimitReason('')
     setLimitWarning('')
-    setIsIntakeComplete(false)
+    if (!shouldResume) {
+      setIsIntakeComplete(false)
+    }
     setIsProcessingUserInput(false)
     pendingInputLockRef.current = ''
-    userTurnCountRef.current = 0
-    totalUserCharactersRef.current = 0
+    if (!shouldResume) {
+      userTurnCountRef.current = 0
+      totalUserCharactersRef.current = 0
+    }
 
     const failConnection = (message: string) => {
       if (connectionAttempt !== connectionAttemptRef.current) return
@@ -648,10 +673,23 @@ export function useRealtimeVoice() {
               type: 'response.create',
               response: {
                 instructions:
-                  'Greet the user briefly, explain that you will ask one question at a time, and ask what happened.',
+                'Greet the user briefly, explain that you will ask one question at a time, and ask what happened.',
               },
             }))
           }
+        } else if (shouldResume && messages.length > 0) {
+          const transcript = messages
+            .slice(-18)
+            .map((message) => `${message.role === 'assistant' ? 'Agent' : 'User'}: ${message.content}`)
+            .join('\n')
+
+          dataChannel.send(JSON.stringify({
+            type: 'response.create',
+            response: {
+              instructions:
+                `${REALTIME_GUARDRAIL_INSTRUCTIONS}\n\nResume this existing intake without restarting from the first question. Use the conversation so far to identify the next missing intake question and ask only that next question. Do not repeat questions already answered.\n\nConversation so far:\n${transcript}`,
+            },
+          }))
         } else {
           dataChannel.send(JSON.stringify({
             type: 'response.create',
@@ -732,7 +770,15 @@ export function useRealtimeVoice() {
           : 'The voice connection timed out. Check your network and try again.',
       )
     }
-  }, [ensureSession, handleServerEvent, lockUserInput, publicConnectionError, sendTextMessage, stop])
+  }, [
+    ensureSession,
+    handleServerEvent,
+    lockUserInput,
+    messages,
+    publicConnectionError,
+    sendTextMessage,
+    stop,
+  ])
 
   useEffect(() => stop, [stop])
 
@@ -746,6 +792,7 @@ export function useRealtimeVoice() {
     isResponding,
     isProcessingUserInput,
     isIntakeComplete,
+    currentQuestionId,
     limitReason,
     limitWarning,
     claimSession,

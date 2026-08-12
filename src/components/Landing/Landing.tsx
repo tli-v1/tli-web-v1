@@ -31,6 +31,7 @@ function Landing() {
   const [isIntakeLaunching, setIsIntakeLaunching] = useState(false)
   const [intakeMode, setIntakeMode] = useState<'text' | 'voice'>('text')
   const [heroPrompt, setHeroPrompt] = useState('')
+  const [isHeroPromptFocused, setIsHeroPromptFocused] = useState(false)
   const [initialTextPrompt, setInitialTextPrompt] = useState('')
   const [initialVoicePrompt, setInitialVoicePrompt] = useState('')
   const [sessionUser, setSessionUser] = useState<User | null>(null)
@@ -137,7 +138,7 @@ function Landing() {
         <div className="hero-title" aria-hidden={isIntakeOpen && intakeMode === 'text'}>
           <h1>Tell us what happened</h1>
           <p className="hero-title__emphasis">We’ll build your case and connect you with top lawyers
-            competing for your case.</p>
+            competing to represent you</p>
         </div>
 
         <div
@@ -171,10 +172,10 @@ function Landing() {
           ) : (
             <form className="hero-intake-prompt" onSubmit={handleHeroPromptSubmit}>
               <div
-                className={`hero-intake-prompt__placeholder${heroPrompt.trim() ? ' is-hidden' : ''}`}
+                className={`hero-intake-prompt__placeholder${heroPrompt.trim() || isHeroPromptFocused ? ' is-hidden' : ''}`}
                 aria-hidden="true"
               >
-                <strong>Describe what happened...</strong>
+                <strong><span className="hero-intake-prompt__caret" />Describe what happened here...</strong>
                 <span className="hero-intake-prompt__examples" aria-label="Example case descriptions">
                   <span>“Car crash caused neck pain and medical bills.”</span>
                   <span>“Fired after reporting unsafe work conditions.”</span>
@@ -189,6 +190,8 @@ function Landing() {
                 disabled={isIntakeLaunching}
                 aria-label="Start your legal intake"
                 placeholder=""
+                onFocus={() => setIsHeroPromptFocused(true)}
+                onBlur={() => setIsHeroPromptFocused(false)}
                 onChange={(event) => setHeroPrompt(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !event.shiftKey) {
@@ -367,8 +370,8 @@ function Landing() {
             </article>
 
             <article className="landing-final-cta__story-card">
-              <h3>3. You get less attention</h3>
-              <p>Insurance companies know they can lowball your case.</p>
+              <h3>3. In reality, you get less </h3>
+              <p>These firms and insurance settle quick, knowing they can lowball your case.</p>
               <div className="landing-final-cta__graphic-panel is-settlement" aria-hidden="true">
                 <img src={readyToStartGraphic} alt="" loading="lazy" decoding="async" />
               </div>

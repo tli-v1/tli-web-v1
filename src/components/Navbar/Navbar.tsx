@@ -1,15 +1,21 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import Logo from '../../assets/tli_logo.png'
 import './Navbar.css'
 
 function Navbar() {
   const [navOpen, setNavOpen] = useState(false)
+  const location = useLocation()
+  const isLandingPage = location.pathname === '/'
 
   const closeNav = () => setNavOpen(false)
 
   return (
-    <nav className={`navbar ${navOpen ? 'nav-open' : ''}`}>
+    <nav className={[
+      'navbar',
+      isLandingPage ? 'navbar--light' : 'navbar--dark',
+      navOpen ? 'nav-open' : '',
+    ].filter(Boolean).join(' ')}>
       <div className="nav-left">
         <Link to="/" className="logo" onClick={closeNav}>
           <img src={Logo} alt="True Legal Innovations logo" className="logo-img" />

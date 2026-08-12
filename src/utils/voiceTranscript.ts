@@ -1,4 +1,5 @@
 import { normalizeSpokenNumberSequences } from './spokenNumbers'
+import { normalizeSpokenAmounts } from './spokenAmounts'
 
 const SPELLED_WORD_CLARIFICATION =
   /\b([A-Za-z][A-Za-z'-]{1,})\s*[,;:]?\s+((?:[A-Za-z](?:\s*-\s*|\s+)){2,}[A-Za-z])\s*,?/g
@@ -27,7 +28,9 @@ export function normalizeVoiceTranscript(transcript: string): string {
     '$1',
   )
 
-  const polished = normalizeSpokenNumberSequences(withoutRepeatedProperNames)
+  const polished = normalizeSpokenAmounts(
+    normalizeSpokenNumberSequences(withoutRepeatedProperNames),
+  )
     .replace(/\s+([,.;!?])/g, '$1')
     .replace(/([,.;!?])(?=[A-Za-z])/g, '$1 ')
     .replace(/\s{2,}/g, ' ')

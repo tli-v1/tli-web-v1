@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
   type WheelEvent,
@@ -28,6 +29,7 @@ import {
   getInitialIntakeQuestion,
   getIntakeQuestion,
   getIntakeStepIndex,
+  getIntakeStepCount,
   getNextIntakeStep,
   isIntakeRequest,
   type ChatIntakeDraft,
@@ -57,6 +59,7 @@ import { isCaseIntakeRelevant, offTopicMessage } from '../../agent/relevance'
 import { useSpeechOutput } from '../../hooks/useSpeechOutput'
 import { useVoiceInput } from '../../hooks/useVoiceInput'
 import { healthInformationNotice } from '../../intake/healthInformationNotice'
+import { normalizeSpokenAmounts } from '../../utils/spokenAmounts'
 import {
   trackAccountAuth,
   trackCaseSubmitted,
@@ -102,7 +105,7 @@ const welcomeMessageId = 'minerva-welcome'
 const defaultInitialMessage =
   "Hi, I'm your intake agent. Tell me what happened, and I can guide you through a conversational intake."
 const consentAnswerFromAccount =
-  'Yes. User continued by signing in or creating an account after the short intake.'
+  'Yes. User continued by signing in or creating an account after the intake.'
 
 export function ChatWidget({
   user,
@@ -157,12 +160,13 @@ export function ChatWidget({
   const [intakeStep, setIntakeStep] = useState<ChatIntakeStep | null>(
     startsInIntake ? 'whatHappened' : null,
   )
-  const progressStep =
+  const intakeStepCount = getIntakeStepCount()
+  const activeStepNumber = intakeStep ? getIntakeStepIndex(intakeStep) : intakeStepCount
+  const completedStepCount =
     awaitingProcessingSignIn || intakeStep === null || isProcessingIntake || processedCaseId
-      ? 3
-      : intakeStep === 'location'
-        ? 2
-        : 1
+      ? intakeStepCount
+      : Math.max(0, activeStepNumber - 1)
+  const progressPercent = Math.round((completedStepCount / intakeStepCount) * 100)
   const messagesRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -203,8 +207,8 @@ export function ChatWidget({
   useEffect(() => {
     const textarea = textareaRef.current
     if (!textarea) return
-    textarea.style.height = '44px'
-    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 44), 120)}px`
+    textarea.style.height = '38px'
+    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 38), 108)}px`
   }, [input])
 
   useEffect(() => {
@@ -602,7 +606,7 @@ export function ChatWidget({
   }
 
   const sendMessage = async (providedContent?: string) => {
-    const content = (providedContent ?? inputRef.current).trim()
+    const content = normalizeSpokenAmounts(providedContent ?? inputRef.current).trim()
     if (!content || isLoading) return
 
     if (autoSubmitTimerRef.current !== null) {
@@ -667,7 +671,7 @@ export function ChatWidget({
   }
 
   useEffect(() => {
-    const cleanInitialUserMessage = initialUserMessage?.trim()
+    const cleanInitialUserMessage = normalizeSpokenAmounts(initialUserMessage ?? '').trim()
     if (
       !startsInIntake
       || !cleanInitialUserMessage
@@ -714,28 +718,41 @@ export function ChatWidget({
     )
   }
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const selectedFileCount = pendingFiles.length + attachedFiles.length
-    if (
-      intakeStep === 'documents'
-      && healthNoticeAccepted
-      && selectedFileCount > 0
-      && !inputRef.current.trim()
-    ) {
-      void sendMessage(
-        `${selectedFileCount} file${selectedFileCount === 1 ? '' : 's'} selected for submission.`,
-      )
+  const buildDocumentStepMessage = () => {
+    const note = inputRef.current.trim()
+    const fileNames = [
+      ...pendingFiles.map((file) => file.name),
+      ...attachedFiles.map((file) => file.name),
+    ]
+    const fileSummary = fileNames.length > 0
+      ? `${fileNames.length} file${fileNames.length === 1 ? '' : 's'} selected: ${fileNames.join(', ')}.`
+      : ''
+
+    return [note, fileSummary].filter(Boolean).join('\n\n')
+  }
+
+  const submitComposerMessage = () => {
+    if (intakeStep === 'documents') {
+      const documentMessage = buildDocumentStepMessage()
+      if (documentMessage) {
+        void sendMessage(documentMessage)
+      }
       return
     }
+
     if (!manualInputRef.current) return
     void sendMessage(inputRef.current)
+  }
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    submitComposerMessage()
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (manualInputRef.current && event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
-      void sendMessage(inputRef.current)
+      submitComposerMessage()
     }
   }
 
@@ -796,19 +813,23 @@ export function ChatWidget({
       </header>
 
       {startsInIntake && (
-        <div className="chat-widget__progress" aria-label={`Intake step ${progressStep} of 3`}>
-          <span className={progressStep >= 1 ? 'is-active' : ''}>
-            <i>1</i>
-            <strong>What happened</strong>
-          </span>
-          <span className={progressStep >= 2 ? 'is-active' : ''}>
-            <i>2</i>
-            <strong>Where</strong>
-          </span>
-          <span className={progressStep >= 3 ? 'is-active' : ''}>
-            <i>3</i>
-            <strong>Account</strong>
-          </span>
+        <div
+          className="chat-widget__progress"
+          aria-label={`Intake ${progressPercent}% complete`}
+          style={{ '--intake-progress': `${progressPercent}%` } as CSSProperties}
+        >
+          <div>
+            <span>Intake progress</span>
+            <strong>{progressPercent}%</strong>
+          </div>
+          <div className="chat-widget__progress-track" aria-hidden="true">
+            <i />
+          </div>
+          <small>
+            {completedStepCount >= intakeStepCount
+              ? 'Ready to save'
+              : `Question ${activeStepNumber} of ${intakeStepCount}`}
+          </small>
         </div>
       )}
 

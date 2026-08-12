@@ -1,4 +1,5 @@
 import { intakeFormSchema } from '../intake/intakeFormSchema'
+import { normalizeSpokenAmounts } from '../utils/spokenAmounts'
 
 export type ChatIntakeStep =
   | 'whatHappened'
@@ -92,7 +93,7 @@ export function applyIntakeAnswer(
   answer: string,
   context: IntakeAnswerContext = {},
 ): IntakeUpdateResult {
-  const trimmed = answer.trim()
+  const trimmed = normalizeSpokenAmounts(answer).trim()
 
   if (!trimmed) {
     return {

@@ -124,8 +124,8 @@
   border: 0;
   border-radius: clamp(1.4rem, 3vw, 2.25rem);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 255, 0.98));
-  box-shadow: 0 22px 58px rgba(15, 29, 60, 0.1);
+    linear-gradient(180deg, rgba(240, 247, 255, 0.98), rgba(226, 237, 252, 0.98));
+  box-shadow: 0 24px 62px rgba(15, 29, 60, 0.14);
   opacity: 0;
   text-align: center;
   transform: translateY(18px) scale(0.985);
@@ -136,7 +136,7 @@
 
 .how-it-works__card:nth-child(1) {
   background:
-    linear-gradient(145deg, #ffffff 0%, #f5f9ff 56%, #eaf3ff 100%);
+    linear-gradient(145deg, #f4f8ff 0%, #e7f0fd 56%, #d6e7fb 100%);
 }
 
 .how-it-works__card:nth-child(2) {
@@ -144,7 +144,7 @@
   --step-badge-border: rgba(226, 178, 47, 0.26);
   --step-badge-shadow: rgba(217, 154, 33, 0.08);
   background:
-    linear-gradient(145deg, #ffffff 0%, #fbf8ef 56%, #f2ead9 100%);
+    linear-gradient(145deg, #fbf4df 0%, #f5e8c7 56%, #ead8ad 100%);
 }
 
 .how-it-works__card:nth-child(3) {
@@ -152,7 +152,7 @@
   --step-badge-border: rgba(45, 122, 111, 0.18);
   --step-badge-shadow: rgba(45, 122, 111, 0.08);
   background:
-    linear-gradient(145deg, #ffffff 0%, #f2f8f7 56%, #e5f2ef 100%);
+    linear-gradient(145deg, #eff8f6 0%, #ddf0ec 56%, #cbe5de 100%);
 }
 
 .how-it-works.is-visible .how-it-works__card {
@@ -161,7 +161,7 @@
 }
 
 .how-it-works.is-visible .how-it-works__card.is-active {
-  box-shadow: 0 26px 66px rgba(15, 29, 60, 0.12);
+  box-shadow: 0 30px 74px rgba(15, 29, 60, 0.16);
 }
 
 .how-it-works.is-visible .how-it-works__card:nth-child(1) {
