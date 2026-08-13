@@ -21,7 +21,9 @@ import {
   trackIntakeStarted,
 } from '../../analytics/googleTags'
 import type { User } from '../../types'
-import readyToStartGraphic from '../../assets/ready_to_start_graphic.png'
+import billboardGraphic from '../../assets/billboard.png'
+import lowSettlementGraphic from '../../assets/low_settlement.png'
+import threeStepGraphic from '../../assets/three_step.png'
 import './Landing.css'
 
 function Landing() {
@@ -356,24 +358,24 @@ function Landing() {
             <article className="landing-final-cta__story-card">
               <h3>1. They spend big on ads</h3>
               <p>Millions go into flashy billboards and TV commercials.</p>
-              <div className="landing-final-cta__graphic-panel is-billboard" aria-hidden="true">
-                <img src={readyToStartGraphic} alt="" loading="lazy" decoding="async" />
+              <div className="landing-final-cta__graphic-panel" aria-hidden="true">
+                <img src={billboardGraphic} alt="" loading="lazy" decoding="async" />
               </div>
             </article>
 
             <article className="landing-final-cta__story-card">
               <h3>2. They make big promises</h3>
               <p>Sound Familiar? Fast settlements. Top dollar. We’ll handle everything.</p>
-              <div className="landing-final-cta__graphic-panel is-promises" aria-hidden="true">
-                <img src={readyToStartGraphic} alt="" loading="lazy" decoding="async" />
+              <div className="landing-final-cta__graphic-panel" aria-hidden="true">
+                <img src={threeStepGraphic} alt="" loading="lazy" decoding="async" />
               </div>
             </article>
 
             <article className="landing-final-cta__story-card">
               <h3>3. In reality, you get less </h3>
-              <p>These firms and insurance settle quick, knowing they can lowball your case.</p>
-              <div className="landing-final-cta__graphic-panel is-settlement" aria-hidden="true">
-                <img src={readyToStartGraphic} alt="" loading="lazy" decoding="async" />
+              <p>These firms and insurance companies settle quick, knowing they can lowball you.</p>
+              <div className="landing-final-cta__graphic-panel" aria-hidden="true">
+                <img src={lowSettlementGraphic} alt="" loading="lazy" decoding="async" />
               </div>
             </article>
           </div>
