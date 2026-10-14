@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ChangeEvent,
@@ -149,6 +150,7 @@ export function ChatWidget({
   const [attachmentError, setAttachmentError] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [visualViewportHeight, setVisualViewportHeight] = useState<number | null>(null)
 
   useEffect(() => {
     if (!awaitingProcessingSignIn || activeUser) return
@@ -184,6 +186,24 @@ export function ChatWidget({
   }, [startsInIntake, user])
 
   useEffect(() => {
+    if (variant !== 'hero' || typeof window === 'undefined' || !window.visualViewport) return undefined
+
+    const viewport = window.visualViewport
+    const updateViewportHeight = () => {
+      setVisualViewportHeight(Math.round(viewport.height))
+    }
+
+    updateViewportHeight()
+    viewport.addEventListener('resize', updateViewportHeight)
+    viewport.addEventListener('scroll', updateViewportHeight)
+
+    return () => {
+      viewport.removeEventListener('resize', updateViewportHeight)
+      viewport.removeEventListener('scroll', updateViewportHeight)
+    }
+  }, [variant])
+
+  useEffect(() => {
     const messagesElement = messagesRef.current
     if (!messagesElement) return
     messagesElement.scrollTo({
@@ -210,6 +230,30 @@ export function ChatWidget({
     textarea.style.height = '38px'
     textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 38), 108)}px`
   }, [input])
+
+  const focusComposer = useCallback((options: { scrollIntoView?: boolean } = {}) => {
+    const textarea = textareaRef.current
+    if (!textarea || textarea.disabled) return
+    textarea.focus({ preventScroll: !options.scrollIntoView })
+    if (options.scrollIntoView) {
+      textarea.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      window.setTimeout(() => {
+        textareaRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      }, 140)
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!isLoading && !isProcessingIntake && isOpen && intakeStep !== 'documents') {
+      focusComposer({ scrollIntoView: variant === 'hero' })
+    }
+  }, [focusComposer, intakeStep, isLoading, isOpen, isProcessingIntake, variant])
+
+  useEffect(() => {
+    if (intakeStep === 'documents') {
+      textareaRef.current?.blur()
+    }
+  }, [intakeStep])
 
   useEffect(() => {
     return () => {
@@ -742,6 +786,7 @@ export function ChatWidget({
 
     if (!manualInputRef.current) return
     void sendMessage(inputRef.current)
+    focusComposer({ scrollIntoView: variant === 'hero' })
   }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -779,6 +824,9 @@ export function ChatWidget({
     <section
       className={`chat-widget chat-widget--${variant}${isFullscreen ? ' chat-widget--fullscreen' : ''}`}
       aria-label="Conversational legal intake"
+      style={{
+        '--chat-widget-viewport-height': visualViewportHeight === null ? undefined : `${visualViewportHeight}px`,
+      } as CSSProperties}
     >
       <header className="chat-widget__header">
         <div>
@@ -1067,6 +1115,8 @@ export function ChatWidget({
         <button
           className="chat-widget__send"
           type="submit"
+          onMouseDown={(event) => event.preventDefault()}
+          onPointerDown={(event) => event.preventDefault()}
           disabled={
             isLoading
             || isProcessingIntake

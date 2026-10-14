@@ -55,56 +55,13 @@
   line-height: 1.6;
 }
 
-.how-it-works__carousel {
+.how-it-works__steps {
   position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
   width: min(100%, 1300px);
-  gap: clamp(1rem, 2.2vw, 2rem);
-}
-
-.how-it-works__viewport {
-  overflow: hidden;
-  border-radius: clamp(1.4rem, 3vw, 2.25rem);
-}
-
-.how-it-works__track {
-  display: flex;
-  transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
-}
-
-.how-it-works__control {
-  display: inline-grid;
-  width: clamp(2.35rem, 3.6vw, 3rem);
-  height: clamp(4.4rem, 7.5vw, 6.5rem);
-  place-items: center;
-  border: 0;
-  border-radius: 1rem;
-  background: transparent;
-  color: #24518d;
-  box-shadow: none;
-  cursor: pointer;
-  transition:
-    transform 180ms ease,
-    color 180ms ease,
-    opacity 180ms ease,
-    background 180ms ease;
-}
-
-.how-it-works__control:hover,
-.how-it-works__control:focus {
-  color: #17366a;
-  opacity: 0.82;
-  background: rgba(36, 81, 141, 0.055);
-  transform: translateY(-1px);
-}
-
-.how-it-works__control svg {
-  width: clamp(1.55rem, 2.2vw, 2rem);
-  height: clamp(3.1rem, 5vw, 4.25rem);
-  stroke-width: 1.85;
+  gap: clamp(1rem, 2vw, 1.5rem);
 }
 
 .how-it-works__card {
@@ -113,21 +70,21 @@
   --step-badge-shadow: rgba(96, 165, 250, 0.08);
   position: relative;
   display: grid;
-  min-width: 100%;
-  min-height: clamp(390px, 42vw, 480px);
+  min-width: 0;
+  min-height: clamp(330px, 30vw, 410px);
   grid-template-rows: auto auto;
-  align-content: center;
-  align-items: center;
-  justify-items: center;
-  gap: clamp(1.2rem, 2.2vw, 1.85rem);
-  padding: clamp(2.5rem, 4vw, 4rem);
+  align-content: start;
+  align-items: start;
+  justify-items: start;
+  gap: clamp(1rem, 1.8vw, 1.45rem);
+  padding: clamp(1.65rem, 2.6vw, 2.35rem);
   border: 0;
-  border-radius: clamp(1.4rem, 3vw, 2.25rem);
+  border-radius: clamp(1.1rem, 1.8vw, 1.45rem);
   background:
     linear-gradient(180deg, rgba(240, 247, 255, 0.98), rgba(226, 237, 252, 0.98));
-  box-shadow: 0 24px 62px rgba(15, 29, 60, 0.14);
+  box-shadow: 0 18px 44px rgba(15, 29, 60, 0.11);
   opacity: 0;
-  text-align: center;
+  text-align: left;
   transform: translateY(18px) scale(0.985);
   transition:
     opacity 520ms ease,
@@ -160,10 +117,6 @@
   transform: translateY(0) scale(1);
 }
 
-.how-it-works.is-visible .how-it-works__card.is-active {
-  box-shadow: 0 30px 74px rgba(15, 29, 60, 0.16);
-}
-
 .how-it-works.is-visible .how-it-works__card:nth-child(1) {
   transition-delay: 80ms;
 }
@@ -178,87 +131,70 @@
 
 .how-it-works__card-heading {
   display: grid;
-  grid-template-columns: auto minmax(0, auto);
+  grid-template-columns: auto minmax(0, 1fr);
   height: auto;
   align-items: center;
-  justify-content: center;
-  gap: clamp(0.85rem, 1.5vw, 1.25rem);
-  width: min(100%, 58rem);
+  justify-content: start;
+  gap: 0.85rem 0.9rem;
+  width: 100%;
 }
 
-.how-it-works__number {
+.how-it-works__icon {
   display: inline-grid;
-  width: clamp(2.65rem, 4vw, 3.15rem);
-  height: clamp(2.65rem, 4vw, 3.15rem);
+  width: clamp(3rem, 4.4vw, 3.6rem);
+  height: clamp(3rem, 4.4vw, 3.6rem);
   place-items: center;
   border: 1px solid var(--step-badge-border);
-  border-radius: 999px;
+  border-radius: 1rem;
   background: var(--step-badge-bg);
   color: #17366a;
-  font-size: clamp(1rem, 1.45vw, 1.2rem);
-  font-weight: 800;
-  line-height: 1;
-  text-align: center;
   box-shadow:
     0 10px 20px var(--step-badge-shadow),
     inset 0 1px 0 rgba(255, 255, 255, 0.42);
 }
 
+.how-it-works__icon svg {
+  width: clamp(1.35rem, 2vw, 1.65rem);
+  height: clamp(1.35rem, 2vw, 1.65rem);
+  stroke-width: 1.8;
+}
+
+.how-it-works__number {
+  color: #17366a;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
 .how-it-works__card h3 {
   display: flex;
+  grid-column: 1 / -1;
   min-height: 0;
   align-items: center;
   justify-content: flex-start;
   margin: 0;
   color: #111827;
   font-family: inherit;
-  font-size: clamp(1.85rem, 2.7vw, 2.65rem);
+  font-size: clamp(1.45rem, 2vw, 2rem);
   font-weight: 450;
-  line-height: 1.2;
+  line-height: 1.15;
   letter-spacing: -0.02em;
   text-wrap: balance;
 }
 
 .how-it-works__card > p {
   margin: 0;
-  max-width: 58rem;
+  max-width: 24rem;
   color: #111827;
-  font-size: clamp(1.08rem, 1.45vw, 1.28rem);
+  font-size: clamp(1rem, 1.15vw, 1.08rem);
   font-weight: 450;
-  line-height: 1.65;
+  line-height: 1.62;
   overflow-wrap: anywhere;
 }
 
-.how-it-works__dots {
-  display: flex;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: clamp(1.1rem, 2vw, 1.5rem);
-}
-
-.how-it-works__dots button {
-  width: 0.5rem;
-  min-width: 0;
-  height: 0.5rem;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: rgba(36, 81, 141, 0.22);
-  box-shadow: none;
-  cursor: pointer;
-  transition:
-    width 180ms ease,
-    background 180ms ease;
-}
-
-.how-it-works__dots button.is-active {
-  width: 1.35rem;
-  background: linear-gradient(135deg, #f3c75f, #d99a21);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .how-it-works__track,
   .how-it-works__card {
     opacity: 1;
     transform: none;
@@ -267,19 +203,15 @@
 }
 
 @media (max-width: 1050px) {
-  .how-it-works__carousel {
+  .how-it-works__steps {
     width: min(100%, 900px);
-    grid-template-columns: auto minmax(0, 1fr) auto;
-  }
-
-  .how-it-works__control {
-    width: 2.5rem;
-    height: 5rem;
+    grid-template-columns: 1fr;
+    gap: 1rem;
   }
 
   .how-it-works__card {
-    min-height: 360px;
-    grid-template-rows: auto auto auto;
+    min-height: 0;
+    grid-template-rows: auto auto;
   }
 
   .how-it-works__card h3 {
@@ -308,43 +240,17 @@
   .how-it-works__card {
     gap: 1.25rem;
     padding: 2rem 1.5rem;
-    min-height: 330px;
   }
 
   .how-it-works__card-heading {
-    grid-template-columns: 1fr;
-    justify-items: center;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    justify-items: start;
   }
 
   .how-it-works__card h3 {
-    justify-content: center;
-    text-align: center;
-  }
-
-  .how-it-works__carousel {
-    grid-template-columns: 1fr;
-  }
-
-  .how-it-works__control {
-    display: none;
-  }
-
-  .how-it-works__dots {
-    gap: 0.38rem;
-    margin-top: 0.9rem;
-  }
-
-  .how-it-works__dots button {
-    width: 0.4rem;
-    min-width: 0;
-    height: 0.4rem;
-    min-height: 0;
-    padding: 0;
-  }
-
-  .how-it-works__dots button.is-active {
-    width: 1.05rem;
-    height: 0.4rem;
+    justify-content: flex-start;
+    text-align: left;
   }
 }
 
@@ -357,7 +263,7 @@
     font-size: clamp(1.9rem, 9vw, 2.25rem);
   }
 
-  .how-it-works__carousel {
+  .how-it-works__steps {
     gap: 1rem;
   }
 

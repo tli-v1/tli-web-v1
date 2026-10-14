@@ -4,7 +4,7 @@
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   width: min(680px, calc(100vw - 32px));
-  height: min(760px, calc(100vh - 48px));
+  height: min(760px, calc(var(--realtime-intake-viewport-height, 100dvh) - 48px));
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 28px;
@@ -675,6 +675,17 @@
     inset 0 -8px 14px rgba(5, 46, 22, 0.2);
 }
 
+.realtime-intake .realtime-intake__mic-toggle.is-muted {
+  background:
+    linear-gradient(158deg, rgba(255, 255, 255, 0.28) 0 12%, rgba(255, 255, 255, 0.1) 13% 23%, transparent 24%),
+    linear-gradient(145deg, #ef4444, #b91c1c 58%, #dc2626);
+  box-shadow:
+    0 10px 24px rgba(220, 38, 38, 0.28),
+    0 3px 0 rgba(127, 29, 29, 0.22),
+    inset 0 1px 1px rgba(255, 255, 255, 0.3),
+    inset 0 -8px 14px rgba(127, 29, 29, 0.22);
+}
+
 .realtime-intake .realtime-intake__mic-toggle:not(:disabled):hover {
   box-shadow:
     0 12px 26px rgba(2, 6, 23, 0.3),
@@ -690,6 +701,14 @@
     0 4px 0 rgba(5, 46, 22, 0.18),
     inset 0 1px 1px rgba(255, 255, 255, 0.3),
     inset 0 -8px 14px rgba(5, 46, 22, 0.2);
+}
+
+.realtime-intake .realtime-intake__mic-toggle.is-muted:not(:disabled):hover {
+  box-shadow:
+    0 12px 26px rgba(220, 38, 38, 0.32),
+    0 4px 0 rgba(127, 29, 29, 0.22),
+    inset 0 1px 1px rgba(255, 255, 255, 0.32),
+    inset 0 -8px 14px rgba(127, 29, 29, 0.22);
 }
 
 .realtime-intake .realtime-intake__mic-toggle:not(:disabled):active {
@@ -1008,8 +1027,8 @@
 @media (max-width: 640px) {
   .realtime-intake {
     width: 100vw;
-    height: 100dvh;
-    max-height: 100dvh;
+    height: var(--realtime-intake-viewport-height, 100dvh);
+    max-height: var(--realtime-intake-viewport-height, 100dvh);
     border-radius: 0;
   }
 

@@ -106,14 +106,16 @@ function Landing() {
     if (isIntakeLaunching) return
 
     setIsIntakeLaunching(true)
-    launchTimerRef.current = window.setTimeout(() => {
+    if (launchTimerRef.current !== null) {
+      window.clearTimeout(launchTimerRef.current)
       launchTimerRef.current = null
-      trackIntakeModeSelected('text')
-      trackIntakeStarted('text')
-      setInitialTextPrompt(initialPrompt.trim())
-      setIsIntakeOpen(true)
-      setIsIntakeLaunching(false)
-    }, 240)
+    }
+
+    trackIntakeModeSelected('text')
+    trackIntakeStarted('text')
+    setInitialTextPrompt(initialPrompt.trim())
+    setIsIntakeOpen(true)
+    setIsIntakeLaunching(false)
   }
 
   const handleHeroPromptSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -134,20 +136,17 @@ function Landing() {
         className={[
           'hero full-height full-bleed',
           isIntakeLaunching ? 'is-launching' : '',
-          isIntakeOpen && intakeMode === 'text' ? 'is-chat-active' : '',
         ].filter(Boolean).join(' ')}
       >
-        <div className="hero-title" aria-hidden={isIntakeOpen && intakeMode === 'text'}>
-          <h1>Tell us what happened</h1>
+        <div className="hero-title">
+          <h1>The best lawyers</h1>
+          <h1 className="hero-title__headline-emphasis">are here for you</h1>
+
           <p className="hero-title__emphasis">We’ll build your case and connect you with top lawyers
             competing to represent you</p>
         </div>
 
-        <div
-          className="hero-proof-points"
-          aria-hidden={isIntakeOpen && intakeMode === 'text'}
-          aria-label="True Legal Innovations highlights"
-        >
+        <div className="hero-proof-points" aria-label="True Legal Innovations highlights">
           <span><Check aria-hidden="true" />100% free</span>
           <span><Clock3 aria-hidden="true" />Takes about 3 minutes</span>
           <span><ShieldCheck aria-hidden="true" />Reviewed by real attorneys</span>
@@ -155,79 +154,61 @@ function Landing() {
         </div>
 
         <div className="hero-intake-stage">
-          {isIntakeOpen && intakeMode === 'text' ? (
-            <div className="hero-inline-chat" aria-label="Text intake">
-              <ChatWidget
-                key={`hero-text-intake-${initialTextPrompt || 'empty'}`}
-                user={sessionUser}
-                variant="hero"
-                intakeMode={true}
-                initialUserMessage={initialTextPrompt}
-                voiceEnabled={false}
-                onClose={() => {
-                  setIsIntakeOpen(false)
-                  setIsIntakeLaunching(false)
-                  setInitialTextPrompt('')
-                }}
-              />
+          <form className="hero-intake-prompt" onSubmit={handleHeroPromptSubmit}>
+            <div
+              className={`hero-intake-prompt__placeholder${heroPrompt.trim() || isHeroPromptFocused ? ' is-hidden' : ''}`}
+              aria-hidden="true"
+            >
+              <strong><span className="hero-intake-prompt__caret" />Describe what happened here...</strong>
+              <span className="hero-intake-prompt__examples" aria-label="Example case descriptions">
+                <span>“Car crash caused neck pain and medical bills.”</span>
+                <span>“Fired after reporting unsafe work conditions.”</span>
+                <span>“Contractor kept my deposit and left repairs unfinished.”</span>
+              </span>
             </div>
-          ) : (
-            <form className="hero-intake-prompt" onSubmit={handleHeroPromptSubmit}>
-              <div
-                className={`hero-intake-prompt__placeholder${heroPrompt.trim() || isHeroPromptFocused ? ' is-hidden' : ''}`}
-                aria-hidden="true"
-              >
-                <strong><span className="hero-intake-prompt__caret" />Describe what happened here...</strong>
-                <span className="hero-intake-prompt__examples" aria-label="Example case descriptions">
-                  <span>“Car crash caused neck pain and medical bills.”</span>
-                  <span>“Fired after reporting unsafe work conditions.”</span>
-                  <span>“Contractor kept my deposit and left repairs unfinished.”</span>
-                </span>
+            <textarea
+              ref={heroPromptRef}
+              id="hero-intake-prompt"
+              value={heroPrompt}
+              rows={2}
+              disabled={isIntakeLaunching}
+              aria-label="Start your legal intake"
+              placeholder=""
+              onFocus={() => setIsHeroPromptFocused(true)}
+              onBlur={() => setIsHeroPromptFocused(false)}
+              onChange={(event) => setHeroPrompt(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  event.currentTarget.form?.requestSubmit()
+                }
+              }}
+            />
+            <div className="hero-intake-prompt__actions">
+              <div className="hero-intake-prompt__right-actions">
+                <button
+                  className="hero-intake-prompt__mic"
+                  type="button"
+                  aria-label="Start voice intake"
+                  disabled={isIntakeLaunching}
+                  onClick={() => {
+                    setIntakeMode('voice')
+                    launchVoiceIntake((heroPromptRef.current?.value ?? heroPrompt).trim())
+                  }}
+                >
+                  <Mic aria-hidden="true" />
+                </button>
+                <button
+                  className="hero-intake-prompt__submit"
+                  type="submit"
+                  aria-label="Start text intake"
+                  disabled={isIntakeLaunching}
+                >
+                  <SendHorizontal aria-hidden="true" />
+                </button>
               </div>
-              <textarea
-                ref={heroPromptRef}
-                id="hero-intake-prompt"
-                value={heroPrompt}
-                rows={2}
-                disabled={isIntakeLaunching}
-                aria-label="Start your legal intake"
-                placeholder=""
-                onFocus={() => setIsHeroPromptFocused(true)}
-                onBlur={() => setIsHeroPromptFocused(false)}
-                onChange={(event) => setHeroPrompt(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault()
-                    event.currentTarget.form?.requestSubmit()
-                  }
-                }}
-              />
-              <div className="hero-intake-prompt__actions">
-                <div className="hero-intake-prompt__right-actions">
-                  <button
-                    className="hero-intake-prompt__mic"
-                    type="button"
-                    aria-label="Start voice intake"
-                    disabled={isIntakeLaunching}
-                    onClick={() => {
-                      setIntakeMode('voice')
-                      launchVoiceIntake((heroPromptRef.current?.value ?? heroPrompt).trim())
-                    }}
-                  >
-                    <Mic aria-hidden="true" />
-                  </button>
-                  <button
-                    className="hero-intake-prompt__submit"
-                    type="submit"
-                    aria-label="Start text intake"
-                    disabled={isIntakeLaunching}
-                  >
-                    <SendHorizontal aria-hidden="true" />
-                  </button>
-                </div>
-              </div>
-            </form>
-          )}
+            </div>
+          </form>
         </div>
       </section>
 
@@ -395,6 +376,36 @@ function Landing() {
           </div>
         </div>
       </section>
+
+      {isIntakeOpen && intakeMode === 'text' && (
+        <div className="hero-chat-overlay" role="dialog" aria-modal="true" aria-label="Text intake">
+          <button
+            className="hero-chat-overlay__backdrop"
+            type="button"
+            aria-label="Close text intake"
+            onClick={() => {
+              setIsIntakeOpen(false)
+              setIsIntakeLaunching(false)
+              setInitialTextPrompt('')
+            }}
+          />
+          <div className="text-intake-modal__chat">
+            <ChatWidget
+              key={`hero-text-intake-${initialTextPrompt || 'empty'}`}
+              user={sessionUser}
+              variant="hero"
+              intakeMode={true}
+              initialUserMessage={initialTextPrompt}
+              voiceEnabled={false}
+              onClose={() => {
+                setIsIntakeOpen(false)
+                setIsIntakeLaunching(false)
+                setInitialTextPrompt('')
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {isIntakeOpen && intakeMode === 'voice' && (
         <div className="hero-chat-overlay" role="dialog" aria-modal="true" aria-label="Conversational intake">

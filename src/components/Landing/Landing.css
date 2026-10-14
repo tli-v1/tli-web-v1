@@ -619,7 +619,7 @@
 }
 
 .landing-final-cta__inner {
-  width: min(100%, var(--landing-max-width));
+  width: min(100%, 1120px);
   margin: 0 auto;
   padding: 0;
   border: 0;
@@ -644,22 +644,26 @@
   max-width: 58rem;
   margin: 0 auto;
   color: #102a58;
-  font-size: clamp(2.55rem, 5.8vw, 5.7rem);
-  line-height: 0.96;
-  letter-spacing: -0.018em;
-  font-weight: 620;
+  font-size: clamp(4.25rem, 6.8vw, 5.9rem);
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  font-weight: 450;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
   text-shadow:
     0 1px 0 rgba(255, 255, 255, 0.92),
     0 12px 26px rgba(92, 124, 176, 0.16);
 }
 
 .landing-final-cta__inner > p {
-  max-width: 54rem;
+  width: min(100%, 44rem);
   margin: clamp(0.95rem, 1.8vw, 1.35rem) auto 0;
   color: rgba(42, 64, 102, 0.78);
-  font-size: clamp(1.02rem, 1.5vw, 1.32rem);
-  font-weight: 500;
+  font-size: clamp(1rem, 1.25vw, 1.16rem);
+  font-weight: 400;
   line-height: 1.55;
+  text-wrap: pretty;
+  overflow-wrap: break-word;
 }
 
 .landing-final-cta__story {
@@ -826,11 +830,8 @@
   --hero-edge-space: clamp(2.75rem, 6vh, 4.5rem);
   --shield-gold: #f3c75f;
   background:
-    radial-gradient(ellipse 64% 42% at 50% 24%, rgba(255, 255, 255, 0.82), transparent 66%),
-    radial-gradient(ellipse 76% 42% at 50% 88%, rgba(194, 219, 255, 0.5), transparent 74%),
-    linear-gradient(135deg, #f6faff 0%, #eaf3ff 48%, #dbeafe 100%);
-  background-size: 135% 135%;
-  background-position: 50% 50%;
+    radial-gradient(ellipse 72% 44% at 50% 20%, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 72%),
+    linear-gradient(180deg, #fbfdff 0%, #f4f8ff 45%, #e8f2ff 100%);
   border-radius: 0;
   padding-right: clamp(2.75rem, 5vw, 4.5rem);
   padding-left: clamp(2.75rem, 5vw, 4.5rem);
@@ -842,7 +843,6 @@
   gap: clamp(2rem, 4vh, 3.4rem);
   align-items: center;
   align-content: center;
-  animation: heroGradientDrift 22s ease-in-out 1s infinite alternate;
   overflow: hidden;
   isolation: isolate;
 }
@@ -1160,6 +1160,7 @@
   place-items: center;
   padding: 1.5rem;
   perspective: 1200px;
+  background: #0f172a;
 }
 
 .hero-chat-overlay__backdrop {
@@ -1198,10 +1199,17 @@
   z-index: 1;
   display: grid;
   place-items: center;
+  width: min(680px, calc(100vw - 32px));
+  height: min(760px, calc(100dvh - 48px));
+  background: #0f172a;
+  transform-origin: center;
+  animation: hero-modal-scroll-open 680ms cubic-bezier(0.18, 0.88, 0.18, 1) both;
 }
 
 .hero-chat-overlay .text-intake-modal__chat .chat-widget {
-  animation: text-intake-chat-fade-in 900ms ease both;
+  width: 100%;
+  height: 100%;
+  animation: none;
 }
 
 .hero::before {
@@ -1209,18 +1217,8 @@
   position: absolute;
   inset: 0;
   z-index: -2;
-  background-image:
-    var(--hero-image, none),
-    radial-gradient(circle at 22% 18%, rgba(43, 91, 171, 0.08) 0 1px, transparent 1.35px),
-    radial-gradient(circle at 76% 62%, rgba(43, 91, 171, 0.045) 0 1px, transparent 1.25px),
-    repeating-linear-gradient(115deg, rgba(43, 91, 171, 0.018) 0 1px, transparent 1px 7px),
-    repeating-linear-gradient(22deg, rgba(255, 255, 255, 0.42) 0 1px, transparent 1px 11px);
-  background-position: var(--hero-image-x) var(--hero-image-y);
-  background-size: cover, 19px 19px, 27px 27px, 100% 100%, 100% 100%;
-  background-repeat: no-repeat;
-  opacity: 0.46;
-  mix-blend-mode: multiply;
-  animation: heroTextureBreathe 13s ease-in-out infinite;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0));
+  opacity: 1;
 }
 
 .hero::after {
@@ -1230,20 +1228,9 @@
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 62% 34% at 50% 22%, rgba(255, 255, 255, 0.38), transparent 66%),
-    radial-gradient(ellipse 86% 36% at 50% 90%, rgba(155, 196, 248, 0.23), transparent 74%),
-    repeating-linear-gradient(88deg, rgba(43, 91, 171, 0.018) 0 1px, transparent 1px 5px),
-    radial-gradient(
-      ellipse 92% 62% at 50% 92%,
-      rgba(219, 234, 254, 0.14) 0%,
-      rgba(194, 219, 255, 0.22) 38%,
-      rgba(173, 204, 244, 0.16) 70%,
-      rgba(255, 255, 255, 0.18) 100%
-    ),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.14) 50%, rgba(255, 255, 255, 0.34) 100%);
-  opacity: 0.86;
+    radial-gradient(ellipse 86% 42% at 50% 96%, rgba(147, 197, 253, 0.2), rgba(147, 197, 253, 0) 76%);
+  opacity: 1;
   transition: filter 420ms ease, opacity 420ms ease;
-  animation: heroLightBreathe 12s ease-in-out infinite;
 }
 
 .hero.is-launching::after {
@@ -1278,12 +1265,12 @@
   justify-self: center;
   text-align: center;
   filter: drop-shadow(0 12px 18px rgba(47, 78, 130, 0.14));
-  transform: translateY(clamp(-2.4rem, -4vh, -1.25rem));
+  transform: translateY(clamp(-4.25rem, -6vh, -2.5rem));
 }
 
 .hero h1 {
   margin: 0;
-  opacity: 0;
+  opacity: 1;
   font-size: clamp(4.25rem, 6.8vw, 5.9rem);
   line-height: 1.04;
   letter-spacing: -0.02em;
@@ -1292,7 +1279,16 @@
   text-shadow:
     0 1px 0 rgba(255, 255, 255, 0.92),
     0 12px 26px rgba(92, 124, 176, 0.16);
-  animation: riseIn 680ms ease 160ms both;
+}
+
+.hero-title__headline-emphasis {
+  font-size: var(--hero-emphasis-size);
+  line-height: 0.9;
+  font-weight: 500;
+  color: #102a58;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.92),
+    0 12px 26px rgba(92, 124, 176, 0.16);
 }
 
 .hero .hero-title__emphasis {
@@ -1389,7 +1385,7 @@
   grid-column: 1;
   grid-row: 1;
   align-self: start;
-  padding-left: 0.28rem;
+  padding: 0.18rem 0 0 0.28rem;
   pointer-events: none;
   transition: opacity 140ms ease, transform 140ms ease;
 }
@@ -1463,7 +1459,7 @@
   width: 100%;
   min-height: 2.75rem;
   margin: 0;
-  padding: 0;
+  padding: 0.18rem 0 0 0.28rem;
   resize: none;
   border: 0;
   outline: 0;
@@ -1572,59 +1568,6 @@
 .hero.is-launching .hero-intake-prompt {
   opacity: 0;
   transform: translateY(-12px) scale(0.98);
-}
-
-.hero.is-chat-active {
-  gap: clamp(1rem, 2vh, 1.55rem);
-  align-content: center;
-  padding-top: calc(var(--hero-nav-top) + var(--hero-nav-height) + clamp(1.25rem, 3vh, 2.5rem));
-  padding-bottom: clamp(1.25rem, 3vh, 2.5rem);
-}
-
-.hero.is-chat-active .hero-intake-stage {
-  width: min(100%, 78rem);
-  min-height: min(54rem, calc(100dvh - 10rem));
-}
-
-.hero.is-chat-active .hero-title,
-.hero.is-chat-active .hero-proof-points {
-  max-height: 0;
-  margin: 0;
-  opacity: 0;
-  pointer-events: none;
-  overflow: hidden;
-  transform: translateY(-16px) scale(0.98);
-  transform-origin: center;
-  transition:
-    max-height 420ms ease,
-    margin 420ms ease,
-    opacity 320ms ease,
-    transform 420ms ease;
-}
-
-.hero-inline-chat {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  justify-self: center;
-  justify-items: center;
-  width: min(100%, 78rem);
-  min-height: min(54rem, calc(100dvh - 10rem));
-  border-radius: clamp(1.45rem, 3vw, 2.25rem);
-  opacity: 0;
-  transform: translateY(18px) scale(0.96);
-  animation: heroInlineChatIn 520ms cubic-bezier(0.18, 0.88, 0.18, 1) both;
-}
-
-.hero-inline-chat .chat-widget {
-  width: 100%;
-  height: min(54rem, calc(100dvh - 10rem));
-  min-height: 34rem;
-  border-radius: clamp(1.45rem, 3vw, 2.25rem);
-  box-shadow:
-    0 0 0 0.55rem rgba(68, 115, 190, 0.18),
-    0 30px 78px rgba(1, 9, 28, 0.34),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .hero .lead {
@@ -2118,37 +2061,6 @@
   animation-delay: 240ms;
 }
 
-@keyframes heroGradientDrift {
-  from {
-    background-position: 46% 46%;
-  }
-  to {
-    background-position: 56% 54%;
-  }
-}
-
-@keyframes heroTextureBreathe {
-  0%,
-  100% {
-    opacity: 0.6;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.76;
-    transform: scale(1.012);
-  }
-}
-
-@keyframes heroLightBreathe {
-  0%,
-  100% {
-    opacity: 0.88;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
 @keyframes riseIn {
   from {
     opacity: 0;
@@ -2398,23 +2310,6 @@
   }
 }
 
-@keyframes heroInlineChatIn {
-  0% {
-    opacity: 0;
-    transform: translateY(18px) scale(0.96);
-    filter: blur(8px);
-  }
-  45% {
-    opacity: 0.82;
-    filter: blur(2px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-    filter: blur(0);
-  }
-}
-
 @keyframes hero-overlay-dim-in {
   from {
     background: rgba(5, 13, 33, 0);
@@ -2442,25 +2337,6 @@
     opacity: 1;
     transform: scaleX(1) scaleY(1);
     filter: blur(0) brightness(1);
-  }
-}
-
-@keyframes text-intake-chat-fade-in {
-  0% {
-    opacity: 0;
-    transform: scale(0.985);
-    filter: blur(8px);
-  }
-
-  45% {
-    opacity: 0.45;
-    filter: blur(4px);
-  }
-
-  100% {
-    opacity: 1;
-    transform: scale(1);
-    filter: blur(0);
   }
 }
 
@@ -2508,6 +2384,7 @@
   .hero-mode-toggle__thumb,
   .hero-voice-label,
   .hero-step,
+  .text-intake-modal__chat,
   .hero-intake-prompt__caret,
   .hero-intake-prompt__examples span,
   .landing-reveal,
@@ -2631,13 +2508,14 @@
 
   .hero-title {
     --hero-emphasis-size: clamp(2.85rem, 12.5vw, 3.9rem);
-    width: min(100%, 25rem);
+    width: 100%;
+    max-width: 21.5rem;
     gap: 0.28rem;
-    transform: none;
+    transform: translateY(-1.35rem);
   }
 
   .hero h1 {
-    font-size: clamp(2.25rem, 9.4vw, 3rem);
+    font-size: clamp(2.05rem, 8.4vw, 2.45rem);
     line-height: 0.98;
   }
 
@@ -2655,7 +2533,8 @@
   }
 
   .hero-proof-points {
-    width: min(100%, 23rem);
+    width: 100%;
+    max-width: 21.5rem;
     gap: 0.52rem 0.75rem;
     margin-top: -0.25rem;
   }
@@ -2705,7 +2584,8 @@
   }
 
   .hero-intake-prompt {
-    width: min(100%, 23rem);
+    width: 100%;
+    max-width: 21.5rem;
     min-height: 6.9rem;
     border-radius: 1.45rem;
     padding: 0.85rem;
@@ -2717,6 +2597,7 @@
 
   .hero-intake-prompt textarea {
     min-height: 2.35rem;
+    padding-top: 0.28rem;
     font-size: 0.94rem;
   }
 
@@ -2745,33 +2626,35 @@
   }
 
   .hero-intake-stage {
-    width: min(100%, 23rem);
+    width: 100%;
+    max-width: 21.5rem;
     min-height: 8.4rem;
-  }
-
-  .hero.is-chat-active {
-    min-height: 100dvh;
-    padding-right: 0.75rem;
-    padding-left: 0.75rem;
-    gap: 0.75rem;
-    align-content: start;
-  }
-
-  .hero-inline-chat {
-    width: 100%;
-    min-height: calc(100dvh - 12.5rem);
-    border-radius: 1.25rem;
-  }
-
-  .hero-inline-chat .chat-widget {
-    width: 100%;
-    height: calc(100dvh - 12.5rem);
-    min-height: 32rem;
-    border-radius: 1.25rem;
   }
 
   .hero-chat-overlay {
     padding: 0;
+    place-items: stretch;
+    overflow: hidden;
+    background: #0f172a;
+  }
+
+  .text-intake-modal__chat {
+    display: block;
+    width: 100vw;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    background: #0f172a;
+    animation: none;
+  }
+
+  .hero-chat-overlay .text-intake-modal__chat .chat-widget,
+  .hero-chat-overlay .chat-widget {
+    width: 100vw;
+    height: var(--chat-widget-viewport-height, 100dvh);
+    border: 0;
+    border-radius: 0;
+    animation: none;
   }
 
   .dashboard-preview-section {
@@ -2861,10 +2744,13 @@
   }
 
   .landing-final-cta__inner h2 {
-    font-size: clamp(2.45rem, 12vw, 3.4rem);
+    max-width: 21.5rem;
+    font-size: clamp(2.05rem, 8.4vw, 2.45rem);
+    line-height: 0.98;
   }
 
   .landing-final-cta__inner > p {
+    width: min(100%, 22rem);
     font-size: 1rem;
   }
 
@@ -2939,12 +2825,12 @@
   }
 
   .hero h1 {
-    font-size: clamp(2.05rem, 9.4vw, 2.55rem);
+    font-size: clamp(1.9rem, 8.2vw, 2.2rem);
   }
 
   .hero-title {
     --hero-emphasis-size: clamp(2.6rem, 12.5vw, 3.2rem);
-    transform: none;
+    transform: translateY(-1.1rem);
   }
 }
 
@@ -2962,7 +2848,7 @@
   .hero-title {
     --hero-emphasis-size: clamp(2.35rem, 7vw, 3rem);
     gap: 0.15rem;
-    transform: none;
+    transform: translateY(-0.75rem);
   }
 
   .hero h1 {

@@ -73,6 +73,31 @@ export default function RealtimeVoiceIntake({
   const [processedCaseId, setProcessedCaseId] = useState('')
   const [showReadyTransition, setShowReadyTransition] = useState(false)
   const [healthNoticeAccepted, setHealthNoticeAccepted] = useState(false)
+  const [visualViewportHeight, setVisualViewportHeight] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.visualViewport) return undefined
+
+    const viewport = window.visualViewport
+    const updateViewportHeight = () => {
+      setVisualViewportHeight(Math.round(viewport.height))
+    }
+
+    updateViewportHeight()
+    viewport.addEventListener('resize', updateViewportHeight)
+    viewport.addEventListener('scroll', updateViewportHeight)
+
+    return () => {
+      viewport.removeEventListener('resize', updateViewportHeight)
+      viewport.removeEventListener('scroll', updateViewportHeight)
+    }
+  }, [])
+
+  const viewportStyle = {
+    '--realtime-intake-viewport-height': visualViewportHeight === null
+      ? undefined
+      : `${visualViewportHeight}px`,
+  } as CSSProperties
 
   const showFileUpload = useMemo(() => {
     if (realtime.currentQuestionId === 'documents') return true
@@ -400,6 +425,7 @@ export default function RealtimeVoiceIntake({
         }`}
         aria-label="Preparing conversational legal intake"
         aria-live="polite"
+        style={viewportStyle}
       >
         <button
           className="realtime-intake__close realtime-intake__loading-close"
@@ -439,6 +465,7 @@ export default function RealtimeVoiceIntake({
     <section
       className="realtime-intake realtime-intake--ready"
       aria-label="Realtime conversational legal intake"
+      style={viewportStyle}
     >
       <header className="realtime-intake__header">
         <div>
@@ -674,9 +701,11 @@ export default function RealtimeVoiceIntake({
         )}
         <form className="realtime-intake__composer" onSubmit={submitTextMessage}>
           <button
-            className={`realtime-intake__mic-toggle ${
-              realtime.status === 'connected' && !realtime.isMicrophoneMuted ? 'is-live' : ''
-            }`}
+            className={[
+              'realtime-intake__mic-toggle',
+              realtime.status === 'connected' && !realtime.isMicrophoneMuted ? 'is-live' : '',
+              realtime.status === 'connected' && realtime.isMicrophoneMuted ? 'is-muted' : '',
+            ].filter(Boolean).join(' ')}
             type="button"
             onClick={realtime.toggleMicrophone}
             disabled={realtime.status !== 'connected' || Boolean(realtime.limitReason)}
