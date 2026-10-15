@@ -4,6 +4,7 @@ type Incident @table {
   description: String!
   incidentDate: Date!
   city: String
+  locationDetails: String
   createdAt: Timestamp!
   stateCode: String
   state: StateCode @ref(fields: "stateCode") # FK to StateCode
@@ -51,10 +52,17 @@ type Party @table {
 type Damage @table(key: ["caseId"]) {
   caseId: UUID!
   case: Case! @ref(fields: "caseId") # FK to Case
+  injuries: String
+  treatment: String
   medicalBillsUsd: Float
+  propertyDamageUsd: Float
+  otherExpensesUsd: Float
   daysMissed: Int
   hourlyRateUsd: Float
   lostWagesUsd: Float
+  emotionalImpact: String
+  otherDamages: String
+  details: String
 }
 
 type CaseContact @table(key: ["caseId"]) {
@@ -105,6 +113,7 @@ type LawyerClientAgreementFile @table {
 # Remove semicolons from Enums
 enum CaseStatus { 
   OPEN 
+  UNDER_REVIEW
   CLOSED 
   PENDING 
 }

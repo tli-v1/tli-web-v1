@@ -140,6 +140,7 @@ export function useVoiceInput({ onTranscript, onError }: UseVoiceInputOptions) {
     supported,
     enabled,
     listening,
+    start,
     toggle,
     stop,
   }

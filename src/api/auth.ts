@@ -1,6 +1,9 @@
 import { 
   createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  OAuthProvider,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut as firebaseSignOut,
   sendPasswordResetEmail,
   updatePassword as firebaseUpdatePassword,
@@ -9,6 +12,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import type { User, Session, AuthResponse, AuthError } from '../types';
+import { getPasswordPolicyError, PASSWORD_REQUIREMENTS } from '../utils/passwordPolicy';
 
 function mapFirebaseUser(firebaseUser: FirebaseUser): User {
   return {
@@ -27,6 +31,71 @@ function createSession(firebaseUser: FirebaseUser): Session {
   };
 }
 
+function authFailure(error: any, fallback: string): AuthResponse {
+  const code = error?.code || 'signin_error';
+  let message = fallback;
+
+  switch (code) {
+    case 'auth/popup-closed-by-user':
+      message = 'Sign-in was canceled before it finished.';
+      break;
+    case 'auth/popup-blocked':
+      message = 'Your browser blocked the sign-in window. Allow popups and try again.';
+      break;
+    case 'auth/account-exists-with-different-credential':
+      message = 'An account already exists with this email. Sign in using the original method.';
+      break;
+    case 'auth/operation-not-allowed':
+      message = 'This sign-in method is not enabled yet. Please use email and password.';
+      break;
+    case 'auth/unauthorized-domain':
+      message = 'This website is not authorized for account sign-in yet. Please contact support.';
+      break;
+    case 'auth/invalid-auth-domain':
+      message = 'Account sign-in is temporarily misconfigured. Please use email and password.';
+      break;
+    case 'auth/network-request-failed':
+      message = 'The sign-in request could not connect. Check your connection and try again.';
+      break;
+    default:
+      message = error?.message || fallback;
+  }
+
+  return {
+    user: null,
+    session: null,
+    error: { message, code },
+  };
+}
+
+async function signInWithProvider(
+  provider: GoogleAuthProvider | OAuthProvider,
+): Promise<AuthResponse> {
+  try {
+    const userCredential = await signInWithPopup(auth, provider);
+    return {
+      user: mapFirebaseUser(userCredential.user),
+      session: createSession(userCredential.user),
+      error: null,
+    };
+  } catch (error: any) {
+    return authFailure(error, 'Sign in failed. Please try again.');
+  }
+}
+
+export function signInWithGoogle(): Promise<AuthResponse> {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  return signInWithProvider(provider);
+}
+
+export function signInWithApple(): Promise<AuthResponse> {
+  const provider = new OAuthProvider('apple.com');
+  provider.addScope('email');
+  provider.addScope('name');
+  return signInWithProvider(provider);
+}
+
 export async function getSession(): Promise<User | null> {
   return new Promise((resolve) => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -43,6 +112,15 @@ export function onAuthStateChange(callback: (user: User | null) => void): () => 
 }
 
 export async function signUp(email: string, password: string): Promise<AuthResponse> {
+  const passwordError = getPasswordPolicyError(password);
+  if (passwordError) {
+    return {
+      user: null,
+      session: null,
+      error: { message: passwordError, code: 'auth/weak-password' },
+    };
+  }
+
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = mapFirebaseUser(userCredential.user);
@@ -65,7 +143,7 @@ export async function signUp(email: string, password: string): Promise<AuthRespo
         message = 'Please enter a valid email address.';
         break;
       case 'auth/weak-password':
-        message = 'Password must be at least 6 characters long.';
+        message = PASSWORD_REQUIREMENTS;
         break;
       case 'auth/operation-not-allowed':
         message = 'Email/password sign up is not enabled. Please contact support.';
@@ -148,6 +226,11 @@ export async function resetPasswordForEmail(
 }
 
 export async function updatePassword(newPassword: string): Promise<{ error: AuthError | null }> {
+  const passwordError = getPasswordPolicyError(newPassword);
+  if (passwordError) {
+    return { error: { message: passwordError, code: 'auth/weak-password' } };
+  }
+
   try {
     const user = auth.currentUser;
     if (!user) {

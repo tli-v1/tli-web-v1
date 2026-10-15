@@ -2,12 +2,75 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function hasMetadata(key) {
+      return resource != null
+        && 'metadata' in resource
+        && key in resource.metadata;
+    }
+
+    function metadataMatchesUser(key) {
+      return isSignedIn()
+        && hasMetadata(key)
+        && resource.metadata[key] == request.auth.uid;
+    }
+
+    function canReadAgreementFile(ownerUserId) {
+      return isOwner(ownerUserId)
+        || metadataMatchesUser('caseOwnerId')
+        || metadataMatchesUser('clientUserId')
+        || metadataMatchesUser('userId');
+    }
+
+    function isSafeCaseAttachment(fileName) {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 20 * 1024 * 1024
+        && fileName.matches('.*\\.(pdf|png|jpg|jpeg|heic|heif|doc|docx|txt)$')
+        && request.resource.contentType.matches(
+          '^(application/pdf|image/png|image/jpeg|image/heic|image/heif|application/msword|application/vnd\\.openxmlformats-officedocument\\.wordprocessingml\\.document|text/plain)$'
+        );
+    }
+
     match /case-docs/{userId}/{caseId}/{fileName} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isSafeCaseAttachment(fileName);
+      allow delete: if isOwner(userId);
+    }
+
+    match /case-docs/{userId}/{fileName} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isSafeCaseAttachment(fileName);
+      allow delete: if isOwner(userId);
+    }
+
+    match /conversational-intakes/{userId}/{intakeId}/{fileName} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isSafeCaseAttachment(fileName);
+      allow delete: if isOwner(userId);
+    }
+
+    match /lawyer-client-agreements/{ownerUserId}/{caseId}/{fileName} {
+      allow read: if canReadAgreementFile(ownerUserId);
+      allow write: if false;
+    }
+
+    match /lawyer-client-agreements/{ownerUserId}/{caseId}/{allPaths=**} {
+      allow read: if canReadAgreementFile(ownerUserId);
+      allow write: if false;
     }
 
     match /lawyer-client-agreements/{allPaths=**} {
-      allow read: if request.auth != null;
+      allow read: if metadataMatchesUser('caseOwnerId')
+        || metadataMatchesUser('clientUserId')
+        || metadataMatchesUser('userId');
       allow write: if false;
     }
   }

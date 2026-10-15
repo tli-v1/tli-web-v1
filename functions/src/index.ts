@@ -1,12 +1,693 @@
-import { onRequest } from 'firebase-functions/v2/https';
+import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
+import { onDocumentUpdated } from 'firebase-functions/v2/firestore';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
 import { VertexAI } from '@google-cloud/vertexai';
+import textToSpeech from '@google-cloud/text-to-speech';
+import { createHash } from 'node:crypto';
 
 admin.initializeApp();
 
 const projectId = 'peak-bit-486121-n6';
-const location = 'us-central1';
-const model = 'gemini-2.5-flash-lite';
+const location = 'global';
+const model = 'gemini-3.5-flash-lite';
+const openAiApiKey = defineSecret('OPENAI_API_KEY');
+const speechClient = new textToSpeech.TextToSpeechClient({
+  apiEndpoint: 'us-texttospeech.googleapis.com',
+});
+const conversationalVoicePrompt = `Speak as a warm, attentive male legal-intake guide in a natural conversation.
+Use a neutral North American accent with a deep, grounded register, gentle concern, and calm confidence.
+Sound human and present, never like an announcer, phone tree, or formal narrator.
+Use a soothing tone, natural rhythm, short pauses, and soft emphasis. Keep the delivery conversational and direct rather than slow or meditative.
+Keep questions inviting and concise.
+Do not sound distressed, overly cheerful, theatrical, patronizing, or flirtatious.
+When discussing injuries or difficult events, convey quiet empathy without exaggerating emotion.`;
+const conversationalIntakes = admin.firestore().collection('conversationalIntakes');
+const processingAlerts = admin.firestore().collection('processingAlerts');
+const minervaRealtimeInstructions = `You are True Legal Innovations' conversational legal-intake assistant. Refer to yourself only as "our agent" or "your intake agent"; do not use a personal name.
+
+Your purpose is to compassionately collect the information needed for a legal intake. You are not a lawyer, do not provide legal advice, and do not create an attorney-client relationship.
+
+Be warm, calm, concise, and reassuring. Ask one focused question at a time and speak naturally. Review the whole conversation before asking a question. Never ask the user to repeat information already provided. Accept approximate, incomplete, unknown, and conversational answers. Do not invent missing information.
+
+Abuse and relevance:
+- Keep an internal count of consecutive answers that do not plausibly answer the current intake question.
+- On the first and second irrelevant answer, briefly redirect to the same question without engaging with unrelated content.
+- On the third consecutive irrelevant answer, say: "I’m going to pause this intake because the responses are not related to the questions. You can start again when you’re ready." Do not ask another question.
+- Reset the irrelevant-answer count whenever the user gives a plausibly relevant answer.
+- Ignore silence, background noise, isolated filler sounds, and unintelligible audio. Never infer an answer from them.
+- Keep every response under 80 spoken words.
+
+Collect in this exact order. Do not skip ahead:
+1. What happened.
+2. Date or timeframe.
+3. Location.
+4. People and organizations involved.
+5. Optional insurance, policy, and claim information.
+6. Injuries, treatment, expenses, property damage, missed work, lost income, emotional effects, and other losses.
+7. One generic optional file-upload step for any relevant documents or evidence. This must come only after steps 1 through 6 are addressed. Ask once whether the user wants to upload any files, such as police or incident reports, medical records or bills, photos, videos, insurance documents, receipts, or correspondence. Explain that selected files remain pending and are securely submitted only after the user signs in or creates an account at the end. Tell the user to review and accept the health-information authorization shown beside the attachment control before selecting files. Do not separate files into categories, ask for each type individually, or revisit file uploads after this step.
+8. Contact details, using separate focused questions in this order:
+   a. Ask for the user's full name.
+   b. Explicitly ask: "What is the best phone number to reach you?" Ask this even if the user prefers email. Accept that they may decline or not know it.
+   c. Ask whether they prefer email, a phone call, or a text message.
+   Do not ask for an email address in conversation; account email is collected by the secure sign-in form after the intake. Do not treat a preferred contact method as a substitute for asking for the phone number.
+9. Consent to store the intake and make contact. If health information or documents are involved, ask for authorization for secure storage and limited sharing with participating attorneys for intake review and attorney matching.
+
+Do not expose your internal checklist. If the user changes an answer, retain the latest version. For immediate danger, advise contacting emergency services. For urgent deadlines, active court matters, criminal exposure, or imminent legal consequences, recommend promptly contacting a licensed attorney.
+
+For the file-upload step, say that the attachment button and health-information authorization are available below. Accept one or multiple files together, explain that they will be submitted at the end after authentication, and continue if the user has no files or wants to upload them later.
+
+When all topics are addressed, say exactly: "Your intake is complete and ready to save. Please use the secure form below to sign in or create an account." Do not ask another question and do not ask the user to speak their email address. Do not read the full intake back unless asked.`;
+
+interface IntakeMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+function validIntakeMessage(value: unknown): value is IntakeMessage {
+  if (!value || typeof value !== 'object') return false;
+  const message = value as Record<string, unknown>;
+  return (message.role === 'user' || message.role === 'assistant')
+    && typeof message.content === 'string'
+    && message.content.trim().length > 0
+    && message.content.length <= 10000;
+}
+
+type ProcessingAlertSeverity = 'critical' | 'warning';
+type ProcessingAlertReason = 'processing_failed' | 'processing_used_fallback' | 'processing_stuck';
+
+function cleanOptionalString(value: unknown, maxLength = 2000): string | null {
+  return typeof value === 'string' && value.trim()
+    ? value.trim().slice(0, maxLength)
+    : null;
+}
+
+function cleanProcessingSource(value: unknown): 'voice' | 'text' | null {
+  return value === 'voice' || value === 'text' ? value : null;
+}
+
+function cleanProcessingAttemptCount(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, Math.trunc(value))
+    : null;
+}
+
+function safeTimestampMillis(value: unknown): number | null {
+  if (
+    value
+    && typeof value === 'object'
+    && 'toMillis' in value
+    && typeof (value as {toMillis?: unknown}).toMillis === 'function'
+  ) {
+    return (value as {toMillis: () => number}).toMillis();
+  }
+  return null;
+}
+
+function logProcessingEvent(
+  eventName: string,
+  payload: Record<string, unknown>,
+  severity: 'log' | 'warn' | 'error' = 'log',
+): void {
+  console[severity](JSON.stringify({
+    event: eventName,
+    ...payload,
+  }));
+}
+
+async function createProcessingAlert(input: {
+  sessionId: string
+  severity: ProcessingAlertSeverity
+  reason: ProcessingAlertReason
+  error?: unknown
+  source?: unknown
+  caseId?: unknown
+  userId?: unknown
+  processingErrorCategory?: unknown
+  processingModel?: unknown
+  processingLocation?: unknown
+  processingAttemptCount?: unknown
+}): Promise<void> {
+  await processingAlerts.doc(`${input.sessionId}-${input.reason}`).set({
+    sessionId: input.sessionId,
+    severity: input.severity,
+    reason: input.reason,
+    status: 'open',
+    source: cleanProcessingSource(input.source),
+    caseId: cleanOptionalString(input.caseId, 200),
+    userId: cleanOptionalString(input.userId, 200),
+    processingErrorCategory: cleanOptionalString(input.processingErrorCategory, 100),
+    processingModel: cleanOptionalString(input.processingModel, 100),
+    processingLocation: cleanOptionalString(input.processingLocation, 100),
+    processingAttemptCount: cleanProcessingAttemptCount(input.processingAttemptCount),
+    error: cleanOptionalString(input.error, 2000),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge: true});
+}
+
+export const persistConversationalIntake = onCall(
+  {
+    region: 'us-central1',
+    maxInstances: 20,
+    memory: '256MiB',
+    timeoutSeconds: 30,
+  },
+  async (request) => {
+    const action = request.data?.action;
+    const providedSessionId = typeof request.data?.sessionId === 'string'
+      ? request.data.sessionId.trim()
+      : '';
+    const sessionRef = providedSessionId
+      ? conversationalIntakes.doc(providedSessionId)
+      : conversationalIntakes.doc();
+    const userId = request.auth?.uid ?? null;
+    const deferOwnership = request.data?.deferOwnership === true;
+    const sourceSessionId = typeof request.data?.sourceSessionId === 'string'
+      ? request.data.sourceSessionId.trim()
+      : '';
+
+    if (action === 'ensure') {
+      const sessionSnapshot = await sessionRef.get();
+      const storedUserId = sessionSnapshot.data()?.userId;
+      if (storedUserId && storedUserId !== userId) {
+        throw new HttpsError('permission-denied', 'This intake belongs to another user.');
+      }
+
+      await sessionRef.set({
+        id: sessionRef.id,
+        recordType: 'conversational_intake',
+        displayName: 'Conversational Intake',
+        agent: 'conversational-intake',
+        intakeStatus: 'in_progress',
+        rawAnswers: {},
+        userId: storedUserId ?? (deferOwnership ? null : userId),
+        ...(sourceSessionId ? {sourceSessionId} : {}),
+        createdAt: sessionSnapshot.exists
+          ? sessionSnapshot.data()?.createdAt ?? admin.firestore.FieldValue.serverTimestamp()
+          : admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+      return {sessionId: sessionRef.id};
+    }
+
+    if (action === 'claim') {
+      if (!userId) {
+        throw new HttpsError('unauthenticated', 'Sign in before saving this intake.');
+      }
+
+      const sessionSnapshot = await sessionRef.get();
+      if (!sessionSnapshot.exists) {
+        throw new HttpsError('not-found', 'This intake session could not be found.');
+      }
+
+      const storedUserId = sessionSnapshot.data()?.userId;
+      const wasExplicitlyClaimed = Boolean(sessionSnapshot.data()?.claimedAt);
+      if (storedUserId && storedUserId !== userId && wasExplicitlyClaimed) {
+        throw new HttpsError('permission-denied', 'This intake belongs to another user.');
+      }
+
+      await sessionRef.set({
+        userId,
+        claimedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+      return {sessionId: sessionRef.id};
+    }
+
+    if (action === 'exchange') {
+      const userMessage = request.data?.userMessage;
+      const assistantMessage = request.data?.assistantMessage;
+      if (!validIntakeMessage(userMessage) || !validIntakeMessage(assistantMessage)) {
+        throw new HttpsError('invalid-argument', 'Valid user and assistant messages are required.');
+      }
+
+      const intake = request.data?.intake;
+      const batch = admin.firestore().batch();
+      batch.set(sessionRef, {
+        id: sessionRef.id,
+        recordType: 'conversational_intake',
+        displayName: 'Conversational Intake',
+        agent: 'conversational-intake',
+        intakeStatus: intake?.complete === true ? 'complete' : 'in_progress',
+        ...(!deferOwnership ? {userId} : {}),
+        lastMessage: assistantMessage.content,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...(intake?.complete === true
+          ? {completedAt: admin.firestore.FieldValue.serverTimestamp()}
+          : {}),
+      }, {merge: true});
+      batch.set(sessionRef.collection('messages').doc(), {
+        ...userMessage,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      batch.set(sessionRef.collection('messages').doc(), {
+        ...assistantMessage,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      if (
+        intake
+        && typeof intake.step === 'string'
+        && typeof intake.answer === 'string'
+        && intake.step.length <= 100
+        && intake.answer.length <= 10000
+      ) {
+        batch.set(sessionRef, {
+          rawAnswers: {
+            [intake.step]: intake.answer,
+          },
+        }, {merge: true});
+      }
+
+      await batch.commit();
+      return {sessionId: sessionRef.id};
+    }
+
+    if (action === 'message') {
+      const message = request.data?.message;
+      if (!validIntakeMessage(message)) {
+        throw new HttpsError('invalid-argument', 'A valid conversation message is required.');
+      }
+
+      const sessionSnapshot = await sessionRef.get();
+      const storedUserId = sessionSnapshot.data()?.userId;
+      if (storedUserId && storedUserId !== userId) {
+        throw new HttpsError('permission-denied', 'This intake belongs to another user.');
+      }
+
+      const batch = admin.firestore().batch();
+      batch.set(sessionRef, {
+        id: sessionRef.id,
+        recordType: 'conversational_intake',
+        displayName: 'Conversational Intake',
+        agent: 'openai-realtime-minerva',
+        intakeStatus: 'in_progress',
+        userId: storedUserId ?? (deferOwnership ? null : userId),
+        lastMessage: message.content,
+        createdAt: sessionSnapshot.exists
+          ? sessionSnapshot.data()?.createdAt ?? admin.firestore.FieldValue.serverTimestamp()
+          : admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+      batch.set(sessionRef.collection('messages').doc(), {
+        ...message,
+        provider: 'openai',
+        model: 'gpt-realtime-2',
+        source: 'realtime_voice',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+      return {sessionId: sessionRef.id};
+    }
+
+    if (action === 'file') {
+      const file = request.data?.file;
+      if (
+        !file
+        || typeof file.name !== 'string'
+        || typeof file.contentType !== 'string'
+        || typeof file.size !== 'number'
+        || typeof file.storagePath !== 'string'
+      ) {
+        throw new HttpsError('invalid-argument', 'Valid file metadata is required.');
+      }
+
+      if (!userId || !file.storagePath.startsWith(`conversational-intakes/${userId}/`)) {
+        throw new HttpsError('permission-denied', 'File ownership could not be verified.');
+      }
+
+      await sessionRef.set({
+        files: admin.firestore.FieldValue.arrayUnion({
+          name: file.name.slice(0, 500),
+          contentType: file.contentType.slice(0, 200),
+          size: file.size,
+          storagePath: file.storagePath.slice(0, 2000),
+          uploadedAt: new Date().toISOString(),
+        }),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+      return {sessionId: sessionRef.id};
+    }
+
+    if (action === 'processing') {
+      const status = request.data?.status;
+      if (!['processing', 'processed', 'failed'].includes(status)) {
+        throw new HttpsError('invalid-argument', 'Valid processing status is required.');
+      }
+
+      const source = cleanProcessingSource(request.data?.source);
+      const caseId = cleanOptionalString(request.data?.caseId, 200);
+      const processingError = cleanOptionalString(request.data?.error, 2000);
+      const processingErrorCategory = cleanOptionalString(
+        request.data?.processingErrorCategory,
+        100,
+      );
+      const processingUpdate: Record<string, unknown> = {
+        processingStatus: status,
+        structuredData: request.data?.structuredData ?? null,
+        caseId,
+        processingError,
+        processingSource: source,
+        processingModel: cleanOptionalString(request.data?.processingModel, 100),
+        processingLocation: cleanOptionalString(request.data?.processingLocation, 100),
+        processingAttemptCount: cleanProcessingAttemptCount(request.data?.processingAttemptCount),
+        processingUsedFallback: request.data?.processingUsedFallback === true,
+        processingErrorCategory,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      if (status === 'processing') {
+        processingUpdate.processingStartedAt = admin.firestore.FieldValue.serverTimestamp();
+      }
+      if (status === 'processed') {
+        processingUpdate.processedAt = admin.firestore.FieldValue.serverTimestamp();
+        processingUpdate.processingFinishedAt = admin.firestore.FieldValue.serverTimestamp();
+      }
+      if (status === 'failed') {
+        processingUpdate.processingFailedAt = admin.firestore.FieldValue.serverTimestamp();
+        processingUpdate.processingFinishedAt = admin.firestore.FieldValue.serverTimestamp();
+      }
+
+      await sessionRef.set(processingUpdate, {merge: true});
+
+      logProcessingEvent(
+        `intake_processing_${status}`,
+        {
+          sessionId: sessionRef.id,
+          userId,
+          source,
+          caseId,
+          processingErrorCategory,
+          processingModel: processingUpdate.processingModel,
+          processingLocation: processingUpdate.processingLocation,
+          processingAttemptCount: processingUpdate.processingAttemptCount,
+          processingUsedFallback: processingUpdate.processingUsedFallback,
+          hasError: Boolean(processingError),
+        },
+        status === 'failed' ? 'error' : 'log',
+      );
+
+      if (status === 'failed') {
+        await createProcessingAlert({
+          sessionId: sessionRef.id,
+          severity: 'critical',
+          reason: 'processing_failed',
+          error: processingError,
+          source,
+          caseId,
+          userId,
+          processingErrorCategory,
+          processingModel: processingUpdate.processingModel,
+          processingLocation: processingUpdate.processingLocation,
+          processingAttemptCount: processingUpdate.processingAttemptCount,
+        });
+      }
+
+      return {sessionId: sessionRef.id};
+    }
+
+    throw new HttpsError('invalid-argument', 'Unsupported persistence action.');
+  },
+);
+
+export const alertOnConversationalIntakeProcessingFailure = onDocumentUpdated(
+  {
+    region: 'us-central1',
+    document: 'conversationalIntakes/{sessionId}',
+    maxInstances: 10,
+    memory: '256MiB',
+  },
+  async (event) => {
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    const sessionId = event.params.sessionId;
+
+    if (!after) return;
+
+    if (after.processingStatus === 'failed' && before?.processingStatus !== 'failed') {
+      await createProcessingAlert({
+        sessionId,
+        severity: 'critical',
+        reason: 'processing_failed',
+        error: after.processingError,
+        source: after.processingSource,
+        caseId: after.caseId,
+        userId: after.userId,
+        processingErrorCategory: after.processingErrorCategory,
+        processingModel: after.processingModel,
+        processingLocation: after.processingLocation,
+        processingAttemptCount: after.processingAttemptCount,
+      });
+      logProcessingEvent('intake_processing_failed_alert', {
+        sessionId,
+        source: after.processingSource,
+        caseId: after.caseId,
+        userId: after.userId,
+        processingErrorCategory: after.processingErrorCategory,
+      }, 'error');
+    }
+
+    if (
+      after.processingStatus === 'processed'
+      && after.processingUsedFallback === true
+      && before?.processingStatus !== 'processed'
+    ) {
+      await createProcessingAlert({
+        sessionId,
+        severity: 'warning',
+        reason: 'processing_used_fallback',
+        source: after.processingSource,
+        caseId: after.caseId,
+        userId: after.userId,
+        processingErrorCategory: after.processingErrorCategory,
+        processingModel: after.processingModel,
+        processingLocation: after.processingLocation,
+        processingAttemptCount: after.processingAttemptCount,
+      });
+      logProcessingEvent('intake_processing_fallback_alert', {
+        sessionId,
+        source: after.processingSource,
+        caseId: after.caseId,
+        userId: after.userId,
+        processingErrorCategory: after.processingErrorCategory,
+      }, 'warn');
+    }
+  },
+);
+
+export const alertOnStuckConversationalIntakeProcessing = onSchedule(
+  {
+    region: 'us-central1',
+    schedule: 'every 5 minutes',
+    timeZone: 'America/New_York',
+    maxInstances: 1,
+    memory: '256MiB',
+  },
+  async () => {
+    const cutoffMs = Date.now() - 5 * 60 * 1000;
+    const snapshot = await conversationalIntakes
+      .where('processingStatus', '==', 'processing')
+      .limit(100)
+      .get();
+
+    const batch = admin.firestore().batch();
+    let alertCount = 0;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      const startedAtMs =
+        safeTimestampMillis(data.processingStartedAt)
+        ?? safeTimestampMillis(data.updatedAt)
+        ?? 0;
+
+      if (!startedAtMs || startedAtMs > cutoffMs || data.processingStuckAlertedAt) {
+        continue;
+      }
+
+      const alertRef = processingAlerts.doc(`${doc.id}-processing_stuck`);
+      batch.set(alertRef, {
+        sessionId: doc.id,
+        severity: 'critical',
+        reason: 'processing_stuck',
+        status: 'open',
+        source: cleanProcessingSource(data.processingSource),
+        caseId: cleanOptionalString(data.caseId, 200),
+        userId: cleanOptionalString(data.userId, 200),
+        processingErrorCategory: cleanOptionalString(data.processingErrorCategory, 100),
+        processingModel: cleanOptionalString(data.processingModel, 100),
+        processingLocation: cleanOptionalString(data.processingLocation, 100),
+        processingAttemptCount: cleanProcessingAttemptCount(data.processingAttemptCount),
+        error: 'Intake remained in processing for more than 5 minutes.',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+      batch.set(doc.ref, {
+        processingStuckAlertedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, {merge: true});
+      alertCount += 1;
+      logProcessingEvent('intake_processing_stuck_alert', {
+        sessionId: doc.id,
+        source: data.processingSource,
+        userId: data.userId,
+      }, 'error');
+    }
+
+    if (alertCount > 0) {
+      await batch.commit();
+    }
+  },
+);
+
+export const createMinervaRealtimeSession = onCall(
+  {
+    region: 'us-central1',
+    maxInstances: 5,
+    memory: '256MiB',
+    timeoutSeconds: 30,
+    secrets: [openAiApiKey],
+  },
+  async (request) => {
+    const apiKey = openAiApiKey.value();
+    if (!apiKey) {
+      throw new HttpsError('failed-precondition', 'OpenAI Realtime is not configured.');
+    }
+
+    const identity = request.auth?.uid
+      ?? request.rawRequest.ip
+      ?? 'anonymous';
+    const safetyIdentifier = createHash('sha256').update(identity).digest('hex');
+
+    const response = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'OpenAI-Safety-Identifier': safetyIdentifier,
+      },
+      body: JSON.stringify({
+        expires_after: {
+          anchor: 'created_at',
+          seconds: 60,
+        },
+        session: {
+          type: 'realtime',
+          model: 'gpt-realtime-2',
+          instructions: minervaRealtimeInstructions,
+          output_modalities: ['audio'],
+          audio: {
+            input: {
+              format: {
+                type: 'audio/pcm',
+                rate: 24000,
+              },
+              transcription: {
+                model: 'gpt-realtime-whisper',
+                language: 'en',
+                delay: 'medium',
+              },
+              noise_reduction: {
+                type: 'near_field',
+              },
+              turn_detection: {
+                type: 'semantic_vad',
+                eagerness: 'low',
+                create_response: false,
+                interrupt_response: false,
+              },
+            },
+            output: {
+              format: {
+                type: 'audio/pcm',
+                rate: 24000,
+              },
+              voice: 'marin',
+            },
+          },
+          tools: [],
+          max_output_tokens: 'inf',
+        },
+      }),
+    });
+
+    const payload = await response.json() as {
+      value?: string;
+      expires_at?: number;
+      error?: {message?: string};
+    };
+
+    if (!response.ok || !payload.value) {
+      console.error('OpenAI Realtime client secret creation failed', {
+        status: response.status,
+        message: payload.error?.message,
+      });
+      throw new HttpsError('internal', 'Unable to start the realtime voice session.');
+    }
+
+    return {
+      value: payload.value,
+      expiresAt: payload.expires_at ?? null,
+      model: 'gpt-realtime-2',
+      voice: 'marin',
+    };
+  },
+);
+
+export const synthesizeConversationalSpeech = onCall(
+  {
+    region: 'us-central1',
+    maxInstances: 5,
+    memory: '256MiB',
+    timeoutSeconds: 30,
+  },
+  async (request) => {
+    const text = typeof request.data?.text === 'string'
+      ? request.data.text.replace(/\s+/g, ' ').trim()
+      : '';
+
+    if (!text) {
+      throw new HttpsError('invalid-argument', 'Text is required.');
+    }
+
+    if (text.length > 1200) {
+      throw new HttpsError('invalid-argument', 'Text must be 1,200 characters or fewer.');
+    }
+
+    try {
+      const [response] = await speechClient.synthesizeSpeech({
+        input: {
+          text,
+          prompt: conversationalVoicePrompt,
+        },
+        voice: {
+          languageCode: 'en-US',
+          name: 'Achernar',
+          modelName: 'gemini-2.5-flash-tts',
+        },
+        audioConfig: {
+          audioEncoding: 'MP3',
+        },
+      });
+
+      if (!response.audioContent) {
+        throw new Error('Cloud Text-to-Speech returned no audio.');
+      }
+
+      return {
+        audioContent: Buffer.from(response.audioContent).toString('base64'),
+        contentType: 'audio/mpeg',
+        voice: 'Achernar',
+        model: 'gemini-2.5-flash-tts',
+      };
+    } catch (error) {
+      console.error('Cloud Text-to-Speech synthesis failed', error);
+      throw new HttpsError('internal', 'Unable to synthesize speech.');
+    }
+  },
+);
 
 interface ChatMessage {
   role: 'user' | 'assistant';

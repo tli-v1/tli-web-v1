@@ -50,11 +50,17 @@ export interface CaseSummary {
   agreement_count: number;
 }
 
+export interface CasePage {
+  cases: CaseSummary[];
+  total: number;
+}
+
 export interface Incident {
   id?: string;
   case_id: string;
   city: string;
   state_code: string;
+  location_details?: string;
   incident_date: string | null;
   description: string;
   created_at?: string;
@@ -63,11 +69,22 @@ export interface Incident {
 export interface Damages {
   id?: string;
   case_id: string;
+  injuries: string;
+  treatment: string;
   medical_expenses: number | null;
   property_damage: number | null;
+  other_expenses: number | null;
   lost_wages: number | null;
   pain_suffering: string | null;
   other_damages: string | null;
+  medical_bills_usd: number | null;
+  property_damage_usd?: number | null;
+  other_expenses_usd?: number | null;
+  days_missed: number | null;
+  hourly_rate_usd: number | null;
+  lost_wages_usd: number | null;
+  emotional_impact: string;
+  details: string;
   created_at?: string;
 }
 
@@ -76,6 +93,10 @@ export interface CaseContact {
   case_id: string;
   preferred_contact_method: string | null;
   best_time_to_call: string | null;
+  full_name?: string;
+  method?: string;
+  email?: string;
+  phone?: string;
   created_at?: string;
 }
 
@@ -85,6 +106,11 @@ export interface Party {
   party_type: string;
   full_name: string;
   contact_info: string | null;
+  role?: string;
+  name?: string;
+  insurer_name?: string;
+  policy_number?: string;
+  claim_number?: string;
   created_at?: string;
 }
 
@@ -97,6 +123,10 @@ export interface Document {
   content_type: string;
   file_size: number;
   uploaded_at: string;
+  kind?: string;
+  original_filename?: string;
+  uploaded_by?: string;
+  notes?: string;
 }
 
 export interface AgreementFile {
@@ -161,6 +191,11 @@ export interface FileUploadResponse {
 }
 
 export interface SignedUrlResponse {
+  url: string | null;
+  error: string | null;
+}
+
+export interface SecureObjectUrlResponse {
   url: string | null;
   error: string | null;
 }

@@ -1,7 +1,9 @@
-query GetUserCases @auth(level: USER) {
+query GetUserCases($limit: Int! = 10, $offset: Int! = 0) @auth(level: USER) {
   cases(
     where: { userId: { eq_expr: "auth.uid" } }
-    orderBy: [{ createdAt: DESC }]
+    orderBy: [{ createdAt: DESC }, { id: DESC }]
+    limit: $limit
+    offset: $offset
   ) {
     id
     status
@@ -16,6 +18,12 @@ query GetUserCases @auth(level: USER) {
     caseListAgreements: lawyerClientAgreements_on_case {
       id
     }
+  }
+  caseCount: cases(
+    where: { userId: { eq_expr: "auth.uid" } }
+    limit: 1
+  ) {
+    _count
   }
 }
 
@@ -34,16 +42,24 @@ query GetCaseDetails($caseId: UUID!) @auth(level: USER) {
       caseId
       city
       stateCode
+      locationDetails
       incidentDate
       description
       createdAt
     }
     damage_on_case {
       caseId
+      injuries
+      treatment
       medicalBillsUsd
+      propertyDamageUsd
+      otherExpensesUsd
       daysMissed
       hourlyRateUsd
       lostWagesUsd
+      emotionalImpact
+      otherDamages
+      details
     }
     caseContact_on_case {
       caseId

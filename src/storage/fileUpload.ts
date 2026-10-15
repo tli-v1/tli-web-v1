@@ -1,11 +1,13 @@
 import {
   deleteObject,
-  getDownloadURL,
+  getBlob,
   ref,
   uploadBytes,
 } from 'firebase/storage';
-import { storage } from '../config/firebase';
-import type { FileUploadParams, FileUploadResponse, SignedUrlResponse } from '../types';
+import { getIdToken } from 'firebase/auth';
+import { auth, storage } from '../config/firebase';
+import type { FileUploadParams, FileUploadResponse, SecureObjectUrlResponse } from '../types';
+import { validateCaseFile } from './fileValidation';
 
 const DEFAULT_FOLDER = 'case-docs';
 
@@ -28,7 +30,53 @@ function cleanSegment(value: string): string {
 function storagePath(folder: string, relativePath: string): string {
   const safeFolder = cleanSegment(folder || DEFAULT_FOLDER);
   const safePath = relativePath.replace(/^\/+/, '');
+  if (!safePath) return safeFolder;
+  if (safePath === safeFolder || safePath.startsWith(`${safeFolder}/`)) {
+    return safePath;
+  }
   return `${safeFolder}/${safePath}`;
+}
+
+function friendlyUploadError(error: unknown): string {
+  const code = (
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && typeof error.code === 'string'
+  ) ? error.code : ''
+
+  if (code === 'storage/unauthorized') {
+    return 'We could not attach that file. Please sign in again and retry.'
+  }
+  if (code === 'storage/canceled') {
+    return 'The file upload was canceled.'
+  }
+  if (code === 'storage/retry-limit-exceeded') {
+    return 'The upload timed out. Check your connection and try again.'
+  }
+
+  return error instanceof Error ? error.message : 'Failed to upload file'
+}
+
+function friendlyFileOpenError(error: unknown): string {
+  const code = (
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && typeof error.code === 'string'
+  ) ? error.code : ''
+
+  if (code === 'storage/unauthorized') {
+    return 'You do not have permission to open that file.'
+  }
+  if (code === 'storage/object-not-found') {
+    return 'That file could not be found.'
+  }
+  if (code === 'storage/retry-limit-exceeded') {
+    return 'Opening the file timed out. Check your connection and try again.'
+  }
+
+  return error instanceof Error ? error.message : 'Unable to open file'
 }
 
 export async function uploadFile({
@@ -38,9 +86,16 @@ export async function uploadFile({
   caseId,
 }: FileUploadParams): Promise<FileUploadResponse> {
   try {
+    const validatedFile = await validateCaseFile(file);
     if (!userId || !caseId) {
       throw new Error('Missing user or case id for file upload.');
     }
+
+    const currentUser = auth.currentUser;
+    if (!currentUser || currentUser.uid !== userId) {
+      throw new Error('Sign in before uploading files to this case.');
+    }
+    await getIdToken(currentUser, true);
 
     const fileName = `${generateFileUuid()}${extensionFor(file.name)}`;
     const relativePath = `${cleanSegment(userId)}/${cleanSegment(caseId)}/${fileName}`;
@@ -48,7 +103,7 @@ export async function uploadFile({
     const fileRef = ref(storage, fullPath);
 
     await uploadBytes(fileRef, file, {
-      contentType: file.type || undefined,
+      contentType: validatedFile.contentType,
       customMetadata: {
         originalName: file.name,
         userId,
@@ -58,8 +113,49 @@ export async function uploadFile({
 
     return { path: relativePath, error: null };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to upload file';
-    return { path: null, error: message };
+    return { path: null, error: friendlyUploadError(error) };
+  }
+}
+
+export async function uploadConversationalIntakeFile({
+  file,
+  userId,
+  intakeId,
+}: {
+  file: File;
+  userId: string;
+  intakeId: string;
+}): Promise<FileUploadResponse> {
+  try {
+    const validatedFile = await validateCaseFile(file);
+    if (!userId || !intakeId) {
+      throw new Error('Sign in before attaching files to this intake.');
+    }
+
+    const currentUser = auth.currentUser;
+    if (!currentUser || currentUser.uid !== userId) {
+      throw new Error('Sign in before attaching files to this intake.');
+    }
+    await getIdToken(currentUser, true);
+
+    const fileName = `${generateFileUuid()}${extensionFor(file.name)}`;
+    const relativePath = `${cleanSegment(userId)}/${cleanSegment(intakeId)}/${fileName}`;
+    const fullPath = storagePath('conversational-intakes', relativePath);
+    const fileRef = ref(storage, fullPath);
+
+    await uploadBytes(fileRef, file, {
+      contentType: validatedFile.contentType,
+      customMetadata: {
+        originalName: file.name,
+        userId,
+        intakeId,
+        recordType: 'conversational_intake',
+      },
+    });
+
+    return { path: relativePath, error: null };
+  } catch (error) {
+    return { path: null, error: friendlyUploadError(error) };
   }
 }
 
@@ -81,19 +177,33 @@ export async function removeFiles(
   }
 }
 
-export async function createSignedUrl(
+export async function createSecureObjectUrl(
   bucketOrPath: string,
   pathOrExpires: string | number = 60,
   _expiresIn: number = 60
-): Promise<SignedUrlResponse> {
+): Promise<SecureObjectUrlResponse> {
   const bucket = typeof pathOrExpires === 'string' ? bucketOrPath : DEFAULT_FOLDER;
   const path = typeof pathOrExpires === 'string' ? pathOrExpires : bucketOrPath;
 
   try {
-    const url = await getDownloadURL(ref(storage, storagePath(bucket, path)));
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error('Sign in before opening files.');
+    }
+    await getIdToken(currentUser, true);
+
+    const blob = await getBlob(ref(storage, storagePath(bucket, path)));
+    const url = URL.createObjectURL(blob);
     return { url, error: null };
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to create download URL';
-    return { url: null, error: message };
+    return { url: null, error: friendlyFileOpenError(error) };
   }
 }
+
+export function revokeSecureObjectUrl(url: string, delayMs = 60_000): void {
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, delayMs);
+}
+
+export const createSignedUrl = createSecureObjectUrl;
