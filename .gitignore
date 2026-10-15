@@ -50,3 +50,5 @@ firebase-debug.*.log
 dataconnect/.dataconnect/
 *.generated.dart
 src/dataconnect-generated*
+
+*.log
