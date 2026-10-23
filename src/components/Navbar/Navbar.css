@@ -152,46 +152,32 @@
 }
 
 .nav-intake {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
   border-radius: 999px;
-  border: 1px solid rgba(37, 99, 235, 0.28);
-  background:
-    linear-gradient(145deg, rgba(49, 103, 205, 0.96), rgba(31, 77, 160, 0.98));
-  color: #f8fbff;
+  border: 0;
+  background: #1d5ad9;
+  color: #ffffff;
   padding: 0.56rem 1.25rem;
-  font-weight: 700;
-  box-shadow:
-    0 12px 24px rgba(12, 45, 96, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.08);
-  transition: border-color 150ms ease, box-shadow 150ms ease, filter 150ms ease, transform 150ms ease;
+  font-weight: 600;
+  box-shadow: none;
+  transition: background-color 150ms ease;
 }
 
-.nav-intake::before {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  content: "";
-  border-radius: inherit;
-  background:
-    linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.2) 24%, transparent 46%),
-    radial-gradient(ellipse at 50% 0%, rgba(255, 255, 255, 0.22), transparent 62%);
-  opacity: 0.72;
+.nav-intake:hover,
+.nav-intake:focus {
+  background: #1645a8;
+  color: #ffffff;
+  box-shadow: none;
+  filter: none;
+  transform: none;
 }
 
-.nav-intake:hover {
-  border-color: rgba(255, 255, 255, 0.82);
-  box-shadow:
-    0 14px 28px rgba(12, 45, 96, 0.24),
-    0 0 0 1px rgba(255, 255, 255, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.32),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.12);
-  color: #fff;
-  filter: brightness(1.1) saturate(1.04);
-  transform: translateY(-1px);
+.nav-intake:focus-visible {
+  outline: 2px solid #1d5ad9;
+  outline-offset: 3px;
 }
 
 @media (max-width: 640px) {

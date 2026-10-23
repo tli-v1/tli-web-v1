@@ -336,7 +336,7 @@ function Landing() {
 
           <div className="landing-final-cta__story" aria-label="Why matching with focused attorneys matters">
             <article className="landing-final-cta__story-card">
-              <h3>1. They spend big on ads</h3>
+              <h3>Spending on ads</h3>
               <p>Millions go into flashy billboards and TV commercials.</p>
               <div className="landing-final-cta__graphic-panel" aria-hidden="true">
                 <img src={billboardGraphic} alt="" loading="lazy" decoding="async" />
@@ -344,7 +344,7 @@ function Landing() {
             </article>
 
             <article className="landing-final-cta__story-card">
-              <h3>2. They make big promises</h3>
+              <h3>Big promises</h3>
               <p>Sound Familiar? Fast settlements. Top dollar. We’ll handle everything.</p>
               <div className="landing-final-cta__graphic-panel" aria-hidden="true">
                 <img src={threeStepGraphic} alt="" loading="lazy" decoding="async" />
@@ -352,8 +352,8 @@ function Landing() {
             </article>
 
             <article className="landing-final-cta__story-card">
-              <h3>3. In reality, you get less </h3>
-              <p>These firms and insurance companies settle quick, knowing they can lowball you.</p>
+              <h3>In reality, you get less </h3>
+              <p>Firms and insurance companies settle quick, lowballing you.</p>
               <div className="landing-final-cta__graphic-panel" aria-hidden="true">
                 <img src={lowSettlementGraphic} alt="" loading="lazy" decoding="async" />
               </div>

@@ -13,21 +13,21 @@ const steps: Array<{
   Icon: LucideIcon
 }> = [
   {
-    title: 'Build your case profile',
+    title: 'Tell us what happened',
     description:
-      'Talk or text with our agent so we get an idea of what happened. You can finish in one sitting or come back and edit in the dashboard.',
+      'Share your story by voice or text, at your own pace.',
     Icon: MessageCircle,
   },
   {
-    title: 'We prepare it',
+    title: 'We build your profile',
     description:
-      'We organize your answers into a short, anonymous case profile. Your name and contact info stay private until you pick a lawyer.',
+      'We organize your case. Your identity stays private until you choose a lawyer.',
     Icon: FileCheck,
   },
   {
-    title: 'Firms compete',
+    title: 'Choose your lawyer',
     description:
-      'Lawyers send you simple, clear offers that show their fees, experience, and plan for your case. Compare them easily and choose who you want to speak with.',
+      'Compare offers, fees, and experience. Choose who you want to speak with.',
     Icon: Handshake,
   },
 ]
@@ -67,7 +67,7 @@ export default function HowItWorks() {
       <div className="how-it-works__intro">
         <p className="eyebrow">How it works</p>
         <h2>
-          Let Attorneys Compete for Your Case
+          Let Attorneys Compete
         </h2>
         <p>
           Your case becomes a simple profile we match with lawyers best suited for you
@@ -84,7 +84,9 @@ export default function HowItWorks() {
               <span className="how-it-works__icon">
                 <Icon aria-hidden="true" />
               </span>
-              <span className="how-it-works__number">Step {index + 1}</span>
+              <span className="how-it-works__number" aria-label={`Step ${index + 1}`}>
+                {String(index + 1)}
+              </span>
               <h3>{title}</h3>
             </div>
             <p>{description}</p>

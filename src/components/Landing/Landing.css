@@ -175,13 +175,14 @@
   margin: 0;
   color: var(--navy-900);
   font-size: clamp(2.5rem, 4.7vw, 4.9rem);
+  font-weight: 400;
   line-height: 0.98;
   letter-spacing: 0.005em;
 }
 
 .dashboard-preview-copy p {
   max-width: 40rem;
-  margin: 0;
+  margin: clamp(0.75rem, 1.5vw, 1.5rem) 0 0;
   color: #50617a;
   font-size: clamp(1.08rem, 1.35vw, 1.26rem);
   line-height: 1.75;
@@ -647,12 +648,10 @@
   font-size: clamp(4.25rem, 6.8vw, 5.9rem);
   line-height: 1.04;
   letter-spacing: -0.02em;
-  font-weight: 450;
+  font-weight: 400;
   text-wrap: balance;
   overflow-wrap: anywhere;
-  text-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.92),
-    0 12px 26px rgba(92, 124, 176, 0.16);
+  text-shadow: none;
 }
 
 .landing-final-cta__inner > p {
@@ -675,38 +674,40 @@
 
 .landing-final-cta__story-card {
   position: relative;
+  min-width: 0;
+  gap: 1.5rem;
   display: flex;
   min-height: clamp(28rem, 36vw, 34rem);
   flex-direction: column;
   align-items: flex-start;
   overflow: hidden;
-  border: 1px solid rgba(143, 178, 226, 0.4);
+  border: 1px solid #e5e5e5;
   border-radius: 1.1rem;
   padding: clamp(1.25rem, 2vw, 2rem);
-  background:
-    radial-gradient(circle at 78% 18%, rgba(255, 255, 255, 0.16), transparent 38%),
-    linear-gradient(145deg, #3f6fa9 0%, #244f89 58%, #143a70 100%);
-  box-shadow:
-    0 20px 52px rgba(40, 82, 140, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  background: #e7f0fd;
+  box-shadow: none;
   text-align: left;
 }
 
 .landing-final-cta__story-card h3 {
   max-width: 22rem;
   margin: 0;
-  color: #ffffff;
+  color: #102a58;
   font-size: clamp(1.15rem, 1.55vw, 1.5rem);
-  font-weight: 850;
-  line-height: 1.18;
+  font-weight: 500;
+  line-height: 1.2;
 }
 
 .landing-final-cta__story-card p {
   max-width: 22rem;
-  margin: 0.85rem 0 0;
-  color: #ffffff;
-  font-size: clamp(0.95rem, 1.15vw, 1.1rem);
-  line-height: 1.45;
+  margin: 0.5rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(49, 95, 154, 0.2);
+  width: 100%;
+  color: #536174;
+  font-size: clamp(0.94rem, 1.05vw, 1rem);
+  font-weight: 400;
+  line-height: 1.65;
 }
 
 .landing-final-cta__graphic-panel {
@@ -715,11 +716,10 @@
   margin-top: auto;
   aspect-ratio: 1 / 1;
   overflow: hidden;
-  border: 0;
+  border: 1px solid #e5e5e5;
   border-radius: 0.85rem;
   background: #ffffff;
-  box-shadow:
-    0 18px 34px rgba(2, 8, 28, 0.22);
+  box-shadow: none;
 }
 
 .landing-final-cta__graphic-panel img {
@@ -766,8 +766,8 @@
   display: block;
   color: #071f4a;
   font-size: clamp(1.18rem, 1.8vw, 1.45rem);
-  font-weight: 850;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.36);
+  font-weight: 500;
+  text-shadow: none;
 }
 
 .landing-final-cta__bottom p {
@@ -801,21 +801,19 @@
   border: 1px solid rgba(15, 42, 88, 0.16);
   border-radius: 999px;
   padding: 0.9rem 1.75rem;
-  background: rgba(255, 255, 255, 0.96);
-  color: #102a58;
+  background: #1d5ad9;
+  color: #ffffff;
   font-size: 1rem;
-  font-weight: 800;
+  font-weight: 600;
   text-decoration: none;
-  box-shadow:
-    0 16px 36px rgba(2, 8, 28, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  box-shadow: none;
 }
 
 .landing-final-cta__button:hover,
 .landing-final-cta__button:focus {
-  background: #ffffff;
-  color: #071f4a;
-  transform: translateY(-2px);
+  background: #1645a8;
+  color: #ffffff;
+  transform: none;
 }
 
 #how-it-works + .firm-section {
@@ -1442,7 +1440,7 @@
   width: 100%;
   height: 1.3em;
   min-height: 0;
-  box-sizing: content-box;
+  box-sizing: border-box;
   margin: 0;
   padding: 0 0 0 0.28rem;
   resize: none;
@@ -2867,4 +2865,31 @@
 .hero-intake-prompt__mic:focus-visible .hero-intake-prompt__tooltip {
   visibility: visible;
   opacity: 1;
+}
+
+/* Keep native controls consistent in Safari and avoid focus zoom on phones. */
+.hero-intake-prompt button,
+.hero-intake-prompt textarea {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+@media (max-width: 1050px) {
+  .hero-intake-prompt textarea,
+  .hero-intake-prompt__placeholder span {
+    font-size: 1rem;
+  }
+}
+
+.landing-final-cta__story-card:nth-child(2) {
+  background: #f5e8c7;
+}
+
+.landing-final-cta__story-card:nth-child(3) {
+  background: #ddf0ec;
+}
+
+.landing-final-cta__button:focus-visible {
+  outline: 2px solid #1d5ad9;
+  outline-offset: 3px;
 }
