@@ -15,7 +15,7 @@ const steps: Array<{
   {
     title: 'Build your case profile',
     description:
-      'Chat or text with our agent so we get an idea of what happened. You can finish in one sitting or come back and edit in the dashboard.',
+      'Talk or text with our agent so we get an idea of what happened. You can finish in one sitting or come back and edit in the dashboard.',
     Icon: MessageCircle,
   },
   {

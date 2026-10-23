@@ -139,11 +139,9 @@ function Landing() {
         ].filter(Boolean).join(' ')}
       >
         <div className="hero-title">
-          <h1>The best lawyers</h1>
-          <h1 className="hero-title__headline-emphasis">are here for you</h1>
+          <h1>Find a lawyer</h1>
 
-          <p className="hero-title__emphasis">We’ll build your case and connect you with top lawyers
-            competing to represent you</p>
+          <p className="hero-title__emphasis">We’ll build your case and connect you with top lawyers</p>
         </div>
 
         <div className="hero-proof-points" aria-label="True Legal Innovations highlights">
