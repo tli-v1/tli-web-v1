@@ -1274,7 +1274,7 @@
   font-size: clamp(4.25rem, 6.8vw, 5.9rem);
   line-height: 1.04;
   letter-spacing: -0.02em;
-  font-weight: 450;
+  font-weight: 400;
   color: #102a58;
   text-shadow:
     0 1px 0 rgba(255, 255, 255, 0.92),
@@ -1359,56 +1359,38 @@
 
 .hero-intake-prompt {
   display: grid;
-  grid-template-rows: minmax(3.45rem, 1fr) auto;
-  align-content: space-between;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 1rem;
   justify-self: center;
   width: 100%;
-  min-height: clamp(7.4rem, 10vw, 8.7rem);
-  border: 1px solid rgba(206, 222, 250, 0.8);
+  min-height: 3.75rem;
+  border: 1px solid #e5e5e5;
   border-radius: clamp(1.45rem, 3vw, 2.25rem);
-  padding: clamp(1.05rem, 1.55vw, 1.35rem);
-  background:
-    radial-gradient(circle at 90% 86%, rgba(220, 230, 246, 0.88), transparent 34%),
-    linear-gradient(135deg, #ffffff 0%, #fbfcff 52%, #edf3fc 100%);
-  box-shadow:
-    0 0 0 0.5rem rgba(90, 142, 214, 0.12),
-    0 30px 78px rgba(85, 115, 165, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  padding: 0.5rem 0.85rem;
+  background: #ffffff;
+  box-shadow: none;
   text-align: left;
   animation: riseIn 680ms ease 560ms both;
   transition: opacity 240ms ease, transform 240ms ease, box-shadow 240ms ease;
 }
 
 .hero-intake-prompt__placeholder {
-  display: grid;
+  display: flex;
+  align-items: center;
   gap: 0.48rem;
   grid-column: 1;
   grid-row: 1;
-  align-self: start;
-  padding: 0.18rem 0 0 0.28rem;
+  min-width: 0;
+  align-self: center;
+  padding: 0 0 0 0.28rem;
   pointer-events: none;
   transition: opacity 140ms ease, transform 140ms ease;
 }
 
-.hero-intake-prompt__placeholder strong {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.08rem;
-  color: #203655;
-  font-size: clamp(1.08rem, 1.55vw, 1.34rem);
-  font-weight: 650;
-  line-height: 1.22;
-}
-
-.hero-intake-prompt__caret {
-  display: inline-block;
-  width: 2px;
-  height: 1.25em;
-  margin-right: 0.08rem;
-  border-radius: 999px;
-  background: #203655;
-  transform: translateY(0.08em);
-  animation: heroPromptCaretBlink 1.05s steps(2, start) infinite;
+.hero-intake-prompt__intro {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .hero-intake-prompt__placeholder span {
@@ -1419,9 +1401,11 @@
 }
 
 .hero-intake-prompt__examples {
+  flex: 1;
+  min-width: 0;
   position: relative;
   display: block;
-  min-height: 1.35em;
+  height: 1.3em;
   overflow: hidden;
 }
 
@@ -1446,29 +1430,30 @@
 }
 
 .hero-intake-prompt__placeholder.is-hidden {
-  height: 0;
+  visibility: hidden;
   opacity: 0;
-  overflow: hidden;
-  transform: translateY(-4px);
 }
 
 .hero-intake-prompt textarea {
   grid-column: 1;
   grid-row: 1;
-  align-self: start;
+  min-width: 0;
+  align-self: center;
   width: 100%;
-  min-height: 2.75rem;
+  height: 1.3em;
+  min-height: 0;
+  box-sizing: content-box;
   margin: 0;
-  padding: 0.18rem 0 0 0.28rem;
+  padding: 0 0 0 0.28rem;
   resize: none;
   border: 0;
   outline: 0;
   background: transparent;
   color: var(--navy-900);
   font: inherit;
-  font-size: clamp(1.02rem, 1.35vw, 1.2rem);
-  font-weight: 550;
-  line-height: 1.4;
+  font-size: clamp(0.92rem, 1.15vw, 1.04rem);
+  font-weight: 500;
+  line-height: 1.3;
 }
 
 .hero-intake-prompt textarea::placeholder {
@@ -1476,10 +1461,10 @@
 }
 
 .hero-intake-prompt__actions {
-  grid-column: 1;
-  grid-row: 2;
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: flex-end;
   gap: 1rem;
   margin-top: 0.1rem;
@@ -1503,8 +1488,10 @@
 }
 
 .hero-intake-prompt__mic {
-  width: 2.6rem;
-  height: 2.6rem;
+  position: relative;
+  overflow: visible;
+  width: 2.75rem;
+  height: 2.75rem;
   background: transparent;
   color: #071a3d;
 }
@@ -1516,25 +1503,23 @@
 }
 
 .hero-intake-prompt__submit {
-  width: 3.35rem;
-  height: 3.35rem;
-  background:
-    radial-gradient(circle at 36% 25%, rgba(122, 169, 255, 0.78), transparent 38%),
-    linear-gradient(145deg, #1d5ad9 0%, #123e97 100%);
+  width: 2.75rem;
+  height: 2.75rem;
+  background: #1d5ad9;
   color: #ffffff;
-  box-shadow:
-    0 12px 26px rgba(18, 62, 151, 0.34),
-    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  box-shadow: none;
 }
 
 .hero-intake-prompt__submit:hover,
 .hero-intake-prompt__submit:focus {
-  background:
-    radial-gradient(circle at 36% 25%, rgba(142, 186, 255, 0.82), transparent 38%),
-    linear-gradient(145deg, #2666ee 0%, #1645a8 100%);
-  box-shadow:
-    0 16px 30px rgba(18, 62, 151, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  background: #1645a8;
+  box-shadow: none;
+  transform: none;
+}
+
+.hero-intake-prompt button:focus-visible {
+  outline: 2px solid #1d5ad9;
+  outline-offset: 3px;
 }
 
 .hero-intake-prompt button:disabled,
@@ -1548,16 +1533,12 @@
   height: 1.35rem;
 }
 
-.hero-intake-prompt__submit svg {
-  width: 1.45rem;
-  height: 1.45rem;
-}
 
 .hero-intake-stage {
   display: grid;
   justify-self: center;
   width: min(100%, 64rem);
-  min-height: clamp(9.4rem, 13vw, 11.2rem);
+  min-height: 0;
   align-items: center;
 }
 
@@ -2586,18 +2567,15 @@
   .hero-intake-prompt {
     width: 100%;
     max-width: 21.5rem;
-    min-height: 6.9rem;
+    min-height: 3.75rem;
+    column-gap: 0.5rem;
     border-radius: 1.45rem;
-    padding: 0.85rem;
-    box-shadow:
-      0 0 0 0.36rem rgba(84, 130, 202, 0.12),
-      0 20px 48px rgba(5, 15, 42, 0.24),
-      inset 0 1px 0 rgba(255, 255, 255, 0.92);
+    padding: 0.5rem 0.65rem;
+    box-shadow: none;
   }
 
-  .hero-intake-prompt textarea {
-    min-height: 2.35rem;
-    padding-top: 0.28rem;
+  .hero-intake-prompt textarea,
+  .hero-intake-prompt__placeholder span {
     font-size: 0.94rem;
   }
 
@@ -2609,16 +2587,12 @@
     gap: 0.42rem;
   }
 
-  .hero-intake-prompt__utility,
-  .hero-intake-prompt__mic {
-    width: 2.25rem;
-    height: 2.25rem;
+  .hero-intake-prompt__mic,
+  .hero-intake-prompt__submit {
+    width: 2.75rem;
+    height: 2.75rem;
   }
 
-  .hero-intake-prompt__submit {
-    width: 2.85rem;
-    height: 2.85rem;
-  }
 
   .hero-intake-prompt svg {
     width: 1.12rem;
@@ -2628,7 +2602,7 @@
   .hero-intake-stage {
     width: 100%;
     max-width: 21.5rem;
-    min-height: 8.4rem;
+    min-height: 0;
   }
 
   .hero-chat-overlay {
@@ -2868,4 +2842,29 @@
   .hero-mode-helper {
     font-size: 0.75rem;
   }
+}
+
+.hero-intake-prompt__tooltip {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 50%;
+  z-index: 10;
+  padding: 0.4rem 0.65rem;
+  border-radius: 0.45rem;
+  background: #203655;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateX(-50%);
+}
+
+.hero-intake-prompt__mic:hover .hero-intake-prompt__tooltip,
+.hero-intake-prompt__mic:focus-visible .hero-intake-prompt__tooltip {
+  visibility: visible;
+  opacity: 1;
 }

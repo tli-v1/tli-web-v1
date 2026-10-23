@@ -157,7 +157,7 @@ function Landing() {
               className={`hero-intake-prompt__placeholder${heroPrompt.trim() || isHeroPromptFocused ? ' is-hidden' : ''}`}
               aria-hidden="true"
             >
-              <strong><span className="hero-intake-prompt__caret" />Describe what happened here...</strong>
+              <span className="hero-intake-prompt__intro">Start here:</span>
               <span className="hero-intake-prompt__examples" aria-label="Example case descriptions">
                 <span>“Car crash caused neck pain and medical bills.”</span>
                 <span>“Fired after reporting unsafe work conditions.”</span>
@@ -168,7 +168,7 @@ function Landing() {
               ref={heroPromptRef}
               id="hero-intake-prompt"
               value={heroPrompt}
-              rows={2}
+              rows={1}
               disabled={isIntakeLaunching}
               aria-label="Start your legal intake"
               placeholder=""
@@ -195,6 +195,7 @@ function Landing() {
                   }}
                 >
                   <Mic aria-hidden="true" />
+                  <span className="hero-intake-prompt__tooltip" aria-hidden="true">Start Voice</span>
                 </button>
                 <button
                   className="hero-intake-prompt__submit"
