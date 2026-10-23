@@ -161,7 +161,9 @@
 
 
 .how-it-works__card h3 {
+  position: relative;
   display: flex;
+  width: 100%;
   grid-column: 2;
   grid-row: 2;
   min-height: 0;
@@ -287,19 +289,19 @@
 }
 
 @media (min-width: 1051px) {
-  .how-it-works__card:not(:last-child)::after {
+  .how-it-works__card:not(:last-child) h3::after {
     content: '→';
     position: absolute;
-    top: 4.5rem;
-    right: calc(-0.5 * clamp(1rem, 2vw, 1.5rem) - 1rem);
+    top: 50%;
+    transform: translateY(-50%);
+    right: calc(-1 * clamp(1.65rem, 2.6vw, 2.35rem) - 0.5 * clamp(1rem, 2vw, 1.5rem) - 1rem - 1px);
     z-index: 2;
     display: grid;
     place-items: center;
     width: 2rem;
     height: 2rem;
-    border: 1px solid #e5e5e5;
-    border-radius: 50%;
-    background: #fff;
+    border: 0;
+    background: transparent;
     color: #536174;
     font-size: 1.1rem;
   }

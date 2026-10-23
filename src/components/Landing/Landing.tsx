@@ -363,7 +363,7 @@ function Landing() {
           <div className="landing-final-cta__bottom">
             <div className="landing-final-cta__shield" aria-hidden="true">✓</div>
             <div>
-              <strong>You deserve better.</strong>
+              <strong>You deserve better</strong>
               <p>We connect you with qualified attorneys who focus on your case, not their ads.</p>
             </div>
             <div className="landing-final-cta__action">
