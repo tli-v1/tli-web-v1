@@ -327,6 +327,12 @@
   line-height: 1.05;
 }
 
+/* Keep one complete example visible even when animations are unavailable. */
+.dashboard-preview-title-cycle span:first-child,
+.dashboard-preview-examples p:first-child {
+  opacity: 1;
+}
+
 .dashboard-preview-title-cycle span:nth-child(2) {
   animation-delay: 4s;
 }
@@ -365,7 +371,7 @@
   line-height: 1.28;
   overflow: hidden;
   opacity: 0;
-  transform: translateY(calc(-50% + 6px));
+  transform: translateY(-50%);
   animation: dashboardExampleBubbleCycle 12s ease-in-out infinite;
   animation-delay: var(--cycle-delay);
 }
@@ -388,7 +394,7 @@
 
 .dashboard-preview-examples p span {
   display: block;
-  width: 0;
+  width: auto;
   max-width: 100%;
   overflow: hidden;
   white-space: nowrap;
@@ -1424,6 +1430,10 @@
   animation-delay: 4s;
 }
 
+.hero-intake-prompt__examples span:first-child {
+  opacity: 1;
+}
+
 .hero-intake-prompt__examples span:nth-child(3) {
   animation-delay: 8s;
 }
@@ -1536,7 +1546,7 @@
 .hero-intake-stage {
   display: grid;
   justify-self: center;
-  width: min(100%, 64rem);
+  width: min(100%, 52rem);
   min-height: 0;
   align-items: center;
 }
@@ -2389,7 +2399,23 @@
 
   .dashboard-preview-examples p span {
     width: auto !important;
+    white-space: normal;
     animation: none !important;
+  }
+
+  .dashboard-preview-examples p {
+    position: static;
+    max-width: 100%;
+    width: auto;
+  }
+
+  .dashboard-preview-examples p:not(:first-child) {
+    display: none !important;
+  }
+
+  .dashboard-preview-examples {
+    display: flex;
+    align-items: center;
   }
 
   .dashboard-preview-title-cycle span {
