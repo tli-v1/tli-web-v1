@@ -1101,7 +1101,7 @@ function CaseDetails() {
             <header className="case-hero">
               <div className="case-hero__copy">
                 <p className="case-eyebrow">Case workspace</p>
-                <h1>{location || 'Submitted case'}</h1>
+                <h1 title={location || 'Submitted case'}>{location || 'Submitted case'}</h1>
                 <p>
                   Submitted {formatDisplayDate(caseSummary.created_at)} · Case #
                   {caseSummary.case_id.slice(0, 8).toUpperCase()}

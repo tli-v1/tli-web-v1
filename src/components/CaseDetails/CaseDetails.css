@@ -1760,3 +1760,11 @@ body.case-record-view .navbar { width: calc(100% - clamp(2.5rem, 4vw, 6rem)); }
   padding-top: 12px;
   padding-bottom: 12px;
 }
+
+.case-detail-page .case-hero__copy { min-width: 0; }
+.case-detail-page .case-hero h1 {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
