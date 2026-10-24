@@ -674,22 +674,22 @@
 .landing-final-cta__story {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(1rem, 2.4vw, 2.5rem);
+  gap: clamp(1rem, 2vw, 1.5rem);
   margin-top: clamp(2.5rem, 4.2vw, 4rem);
 }
 
 .landing-final-cta__story-card {
   position: relative;
   min-width: 0;
-  gap: 1.5rem;
-  display: flex;
-  min-height: clamp(28rem, 36vw, 34rem);
-  flex-direction: column;
-  align-items: flex-start;
+  gap: clamp(1rem, 1.8vw, 1.45rem);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  align-items: start;
   overflow: hidden;
   border: 1px solid #e5e5e5;
-  border-radius: 1.1rem;
-  padding: clamp(1.25rem, 2vw, 2rem);
+  border-radius: 1rem;
+  padding: clamp(1.65rem, 2.6vw, 2.35rem);
+  padding-bottom: 0;
   background: #e7f0fd;
   box-shadow: none;
   text-align: left;
@@ -719,12 +719,13 @@
 .landing-final-cta__graphic-panel {
   position: relative;
   width: 100%;
-  margin-top: auto;
+  margin-top: 0;
+  align-self: end;
   aspect-ratio: 1 / 1;
   overflow: hidden;
-  border: 1px solid #e5e5e5;
-  border-radius: 0.85rem;
-  background: #ffffff;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   box-shadow: none;
 }
 
@@ -733,7 +734,13 @@
   width: 100%;
   max-width: 100%;
   height: 100%;
+  object-fit: contain;
+}
+
+.landing-final-cta__story-card:first-child .landing-final-cta__graphic-panel img {
   object-fit: cover;
+  -webkit-mask-image: radial-gradient(ellipse 70% 50% at center, #000 50%, transparent 100%);
+  mask-image: radial-gradient(ellipse 70% 50% at center, #000 50%, transparent 100%);
 }
 
 .landing-final-cta__bottom {
@@ -2755,10 +2762,11 @@
   }
 
   .landing-final-cta__story-card {
-    width: min(100%, 24rem);
+    width: 100%;
     min-height: auto;
-    padding: 1.35rem;
-    border-radius: 0.95rem;
+    padding: 2rem 1.5rem;
+    padding-bottom: 0;
+    border-radius: 1rem;
   }
 
   .landing-final-cta__story-card h3,
@@ -2767,7 +2775,9 @@
   }
 
   .landing-final-cta__graphic-panel {
-    margin-top: 1.25rem;
+    margin-top: 0;
+    max-width: 32rem;
+    justify-self: center;
   }
 
   .landing-final-cta__bottom {

@@ -18,9 +18,9 @@ import {
   trackIntakeModeSelected,
   trackIntakeStarted,
 } from '../../analytics/googleTags'
-import billboardGraphic from '../../assets/billboard.png'
-import lowSettlementGraphic from '../../assets/low_settlement.png'
-import threeStepGraphic from '../../assets/three_step.png'
+import billboardGraphic from '../../assets/highway_accident_billboard.png'
+import lowSettlementGraphic from '../../assets/settlement_offer.png'
+import threeStepGraphic from '../../assets/marketing_promises.png'
 import './Landing.css'
 
 function Landing() {
