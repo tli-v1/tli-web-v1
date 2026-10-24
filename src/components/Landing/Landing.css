@@ -739,8 +739,8 @@
 
 .landing-final-cta__story-card:first-child .landing-final-cta__graphic-panel img {
   object-fit: cover;
-  -webkit-mask-image: radial-gradient(ellipse 70% 50% at center, #000 50%, transparent 100%);
-  mask-image: radial-gradient(ellipse 70% 50% at center, #000 50%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 56% 50% at center, #000 50%, transparent 100%);
+  mask-image: radial-gradient(ellipse 56% 50% at center, #000 50%, transparent 100%);
 }
 
 .landing-final-cta__bottom {
