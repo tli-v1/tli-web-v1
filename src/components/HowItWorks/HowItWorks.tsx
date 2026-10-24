@@ -6,29 +6,36 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import './HowItWorks.css'
+import voiceRecordingGraphic from '../../assets/voice_recording_graphic.png'
+import caseProfileGraphic from '../../assets/case_profile_graphic.png'
+import lawyerSelectionGraphic from '../../assets/lawyer_selection_graphic.png'
 
 const steps: Array<{
   title: string
   description: string
   Icon: LucideIcon
+  illustration: string
 }> = [
   {
     title: 'Tell us what happened',
     description:
       'Share your story by voice or text, at your own pace.',
     Icon: MessageCircle,
+    illustration: voiceRecordingGraphic,
   },
   {
     title: 'We build your profile',
     description:
       'We organize your case. Your identity stays private until you choose a lawyer.',
     Icon: FileCheck,
+    illustration: caseProfileGraphic,
   },
   {
     title: 'Choose your lawyer',
     description:
       'Compare offers, fees, and experience. Choose who you want to speak with.',
     Icon: Handshake,
+    illustration: lawyerSelectionGraphic,
   },
 ]
 
@@ -75,7 +82,7 @@ export default function HowItWorks() {
       </div>
 
       <div className="how-it-works__steps" aria-label="How it works steps">
-        {steps.map(({ title, description, Icon }, index) => (
+        {steps.map(({ title, description, Icon, illustration }, index) => (
           <article
             className="how-it-works__card"
             key={title}
@@ -90,6 +97,13 @@ export default function HowItWorks() {
               <h3>{title}</h3>
             </div>
             <p>{description}</p>
+            <img
+              className="how-it-works__illustration"
+              src={illustration}
+              alt=""
+              loading="lazy"
+              decoding="async"
+            />
           </article>
         ))}
       </div>
