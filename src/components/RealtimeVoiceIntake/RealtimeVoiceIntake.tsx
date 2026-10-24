@@ -1,4 +1,4 @@
-import { ArrowUp, Check, LoaderCircle, Mic, MicOff, Paperclip, X } from 'lucide-react'
+import { ArrowUp, MessageCircle, Check, LoaderCircle, Mic, MicOff, Paperclip, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { updateConversationalIntakeProcessing } from '../../agent/initialize'
@@ -36,6 +36,7 @@ import PasswordRequirements from '../PasswordRequirements/PasswordRequirements'
 import './RealtimeVoiceIntake.css'
 
 interface RealtimeVoiceIntakeProps {
+  mode?: 'voice' | 'text'
   initialUserMessage?: string
   onClose: () => void
   onFallbackToText?: () => void
@@ -46,13 +47,27 @@ type AuthMode = 'signin' | 'signup'
 const FILE_UPLOAD_PROMPT_PATTERN =
   /\b(?:attach|upload|add|provide|share|select|choose)\b[\s\S]{0,120}\b(?:files?|documents?|evidence|photos?|photographs?|videos?|records?|reports?|bills?|receipts?|contracts?|correspondence|attachments?)\b|\b(?:files?|documents?|evidence|photos?|photographs?|videos?|records?|reports?|bills?|receipts?|contracts?|correspondence|attachments?)\b[\s\S]{0,120}\b(?:attach|upload|add|provide|share|select|choose)\b/i
 
-export default function RealtimeVoiceIntake({
+export default function RealtimeVoiceIntake(props: RealtimeVoiceIntakeProps) {
+  const [attempt, setAttempt] = useState(0)
+  return <IntakeSessionView {...props} key={attempt}
+    initialUserMessage={attempt === 0 ? props.initialUserMessage : undefined}
+    onRestart={() => setAttempt(value => value + 1)} />
+}
+
+function IntakeSessionView({
   initialUserMessage,
+  mode = 'voice',
   onClose,
   onFallbackToText,
-}: RealtimeVoiceIntakeProps) {
-  const realtime = useRealtimeVoice()
+  onRestart,
+}: RealtimeVoiceIntakeProps & { onRestart: () => void }) {
+  const realtime = useRealtimeVoice(mode)
+  const blockedNoticeRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (realtime.limitReason) blockedNoticeRef.current?.focus({ preventScroll: true })
+  }, [realtime.limitReason])
   const endRef = useRef<HTMLDivElement>(null)
+  const textInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const finalizingRef = useRef(false)
   const hasShownPreparingRef = useRef(false)
@@ -100,8 +115,6 @@ export default function RealtimeVoiceIntake({
   } as CSSProperties
 
   const showFileUpload = useMemo(() => {
-    if (realtime.currentQuestionId === 'documents') return true
-
     const latestAssistantMessage = [...realtime.messages]
       .reverse()
       .find((message) => message.role === 'assistant')
@@ -149,7 +162,8 @@ export default function RealtimeVoiceIntake({
     && realtime.messages.length === 0
   )
   const intakeQuestionCount = 9
-  const answeredQuestionCount = realtime.messages.filter((message) => message.role === 'user').length
+  const steps = ['whatHappened', 'incidentDate', 'location', 'adverseParty', 'insurerInfo', 'damages', 'documents', 'contact', 'consent']
+  const answeredQuestionCount = Math.max(0, steps.indexOf(realtime.currentQuestionId ?? 'whatHappened'))
   const completedQuestionCount =
     realtime.isIntakeComplete || intakeSaved || processedCaseId
       ? intakeQuestionCount
@@ -185,6 +199,7 @@ export default function RealtimeVoiceIntake({
       )
     if (realtime.sendTextMessage(message, { preserveMicrophone: showFileUpload })) {
       setTextInput('')
+      textInputRef.current?.focus({ preventScroll: true })
     }
   }
 
@@ -257,7 +272,7 @@ export default function RealtimeVoiceIntake({
       processingSessionId = await realtime.claimSession()
       await updateConversationalIntakeProcessing(processingSessionId, {
         status: 'processing',
-        source: 'voice',
+        source: mode,
       })
 
       const draft = buildVoiceIntakeDraft(realtime.messages)
@@ -271,6 +286,7 @@ export default function RealtimeVoiceIntake({
       const processed = await processIntakeIntoCase({
         draft: consentedDraft,
         files: [],
+        sourceFiles: healthNoticeAccepted ? pendingFiles : [],
         prepareFiles: (caseId) => uploadPendingFiles(user, caseId),
         user,
       })
@@ -278,7 +294,7 @@ export default function RealtimeVoiceIntake({
         status: 'processed',
         structuredData: processed.structured,
         caseId: processed.caseId,
-        source: 'voice',
+        source: mode,
         processingModel: processed.processingMetadata.model,
         processingLocation: processed.processingMetadata.location,
         processingAttemptCount: processed.processingMetadata.attemptCount,
@@ -287,8 +303,8 @@ export default function RealtimeVoiceIntake({
       })
       setProcessedCaseId(processed.caseId)
       setIntakeSaved(true)
-      trackIntakeCompleted('voice')
-      trackCaseSubmitted('voice', {
+      trackIntakeCompleted(mode)
+      trackCaseSubmitted(mode, {
         fileCount: pendingFiles.length,
       })
     } catch (error) {
@@ -297,7 +313,7 @@ export default function RealtimeVoiceIntake({
         await updateConversationalIntakeProcessing(processingSessionId, {
           status: 'failed',
           error: message,
-          source: 'voice',
+          source: mode,
           processingErrorCategory: classifyClientProcessingError(message),
         }).catch(() => undefined)
       }
@@ -354,7 +370,7 @@ export default function RealtimeVoiceIntake({
       setAuthPassword('')
       trackAccountAuth(
         authMode === 'signup' ? 'created' : 'signed_in',
-        'voice_intake',
+        mode === 'text' ? 'text_intake' : 'voice_intake',
         'email',
       )
       await finalizeIntake(response.user)
@@ -380,7 +396,7 @@ export default function RealtimeVoiceIntake({
         throw new Error('Authentication completed without a user account.')
       }
 
-      trackAccountAuth('signed_in', 'voice_intake', provider)
+      trackAccountAuth('signed_in', mode === 'text' ? 'text_intake' : 'voice_intake', provider)
       await finalizeIntake(response.user)
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Authentication failed.')
@@ -409,7 +425,7 @@ export default function RealtimeVoiceIntake({
       await validateCaseFiles(nextFiles)
       setUploadError('')
       setPendingFiles(nextFiles)
-      trackFileSelected('voice_intake', nextFiles.length)
+      trackFileSelected(mode === 'text' ? 'text_intake' : 'voice_intake', nextFiles.length)
     } catch (error) {
       setUploadError(
         error instanceof Error ? error.message : 'One or more attachments are not allowed.',
@@ -431,7 +447,7 @@ export default function RealtimeVoiceIntake({
           className="realtime-intake__close realtime-intake__loading-close"
           type="button"
           onClick={close}
-          aria-label="Close voice intake"
+          aria-label={`Close ${mode} intake`}
         >
           <X aria-hidden="true" />
         </button>
@@ -446,7 +462,7 @@ export default function RealtimeVoiceIntake({
         ) : (
           <div className="realtime-intake__loading-content">
             <div className="realtime-intake__loading-mark" aria-hidden="true">
-              <Mic />
+              {mode === 'text' ? <MessageCircle /> : <Mic />}
             </div>
             <h2>Getting things ready for you!</h2>
             <p>Our agent will be with you in just a moment</p>
@@ -471,15 +487,15 @@ export default function RealtimeVoiceIntake({
         <div>
           <h2>Share what happened</h2>
           <p>
-            {realtime.status === 'connecting' && 'Connecting secure voice session…'}
+            {realtime.status === 'connecting' && 'Connecting secure intake session…'}
             {realtime.status === 'connected' && (
               realtime.limitReason
                 ? 'Input limit reached'
-                : realtime.isMicrophoneMuted ? 'Microphone off · type below' : 'Listening · speak naturally'
+                : mode === 'text' ? 'Message your intake agent below' : realtime.isMicrophoneMuted ? 'Microphone off · type below' : 'Listening · speak naturally'
             )}
-            {realtime.status === 'error' && 'Voice session unavailable'}
+            {realtime.status === 'error' && 'Intake session unavailable'}
             {realtime.status === 'idle' && (
-              realtime.limitReason ? 'Intake paused' : 'Voice session ended'
+              realtime.limitReason ? 'Intake paused' : 'Intake session ended'
             )}
           </p>
           <span className="realtime-intake__edit-disclaimer">
@@ -490,7 +506,7 @@ export default function RealtimeVoiceIntake({
           className="realtime-intake__close"
           type="button"
           onClick={close}
-          aria-label="Close voice intake"
+          aria-label={`Close ${mode} intake`}
         >
           <X aria-hidden="true" />
         </button>
@@ -582,14 +598,22 @@ export default function RealtimeVoiceIntake({
           </div>
         )}
         {realtime.error && <p className="realtime-intake__error">{realtime.error}</p>}
-        {realtime.limitReason && (
-          <p className="realtime-intake__limit-notice">{realtime.limitReason}</p>
-        )}
+
         <div ref={endRef} />
       </div>
 
       <footer className="realtime-intake__footer">
-        {realtime.isIntakeComplete ? (
+        {realtime.limitReason ? (
+          <div className="realtime-intake__blocked" role="alert" tabIndex={-1} ref={blockedNoticeRef}>
+            <h3>Intake paused</h3>
+            <p>{realtime.limitReason}</p>
+            <p>Your conversation is still visible above. To continue, start a new intake and answer the questions about your situation. Starting again clears this chat view and any pending attachments.</p>
+            <div className="realtime-intake__blocked-actions">
+              <button type="button" className="realtime-intake__fallback" onClick={onRestart}>Start a new intake</button>
+              <button type="button" className="realtime-intake__retry" onClick={close}>Close intake</button>
+            </div>
+          </div>
+        ) : realtime.isIntakeComplete ? (
           intakeSaved ? (
             <div className="realtime-intake__saved" role="status">
               <div className="realtime-intake__saved-message">
@@ -700,7 +724,7 @@ export default function RealtimeVoiceIntake({
           </p>
         )}
         <form className="realtime-intake__composer" onSubmit={submitTextMessage}>
-          <button
+          {mode === 'voice' && <button
             className={[
               'realtime-intake__mic-toggle',
               realtime.status === 'connected' && !realtime.isMicrophoneMuted ? 'is-live' : '',
@@ -721,7 +745,7 @@ export default function RealtimeVoiceIntake({
                   <MicOff />
                 </span>
               )}
-          </button>
+          </button>}
 
           {showFileUpload && (
             <>
@@ -759,27 +783,25 @@ export default function RealtimeVoiceIntake({
           )}
 
           <input
+            ref={textInputRef}
             className="realtime-intake__text-input"
             type="text"
             value={textInput}
             onChange={(event) => setTextInput(event.target.value)}
             maxLength={800}
             placeholder={
-              realtime.isResponding
-                ? 'Our agent is responding…'
-                : showFileUpload
+              showFileUpload
                   ? 'Optional note about your files…'
                   : realtime.status === 'connected'
                     ? 'Type a message…'
                     : realtime.status === 'error'
-                      ? 'Voice disconnected — try again below'
+                      ? 'Disconnected — try again below'
                       : realtime.status === 'connecting'
                         ? 'Connecting…'
-                        : 'Voice session ended'
+                        : 'Intake session ended'
             }
             disabled={
               realtime.status !== 'connected'
-              || realtime.isResponding
               || Boolean(realtime.limitReason)
             }
             aria-label="Message our agent"
@@ -858,25 +880,25 @@ export default function RealtimeVoiceIntake({
             </p>
           )}
           {uploadError && <p className="realtime-intake__upload-error">{uploadError}</p>}
-            {realtime.status === 'error' && realtime.supported && (
+            {!realtime.limitReason && realtime.status === 'error' && realtime.supported && (
               <div className="realtime-intake__fallback-actions">
-                <button
+                {onFallbackToText && <button
                   className="realtime-intake__fallback"
                   type="button"
                   onClick={continueByText}
                 >
                   Continue by text
-                </button>
+                </button>}
                 <button
                   className="realtime-intake__retry"
                   type="button"
                   onClick={resumeVoice}
                 >
-                  Try voice again
+                  Try again
                 </button>
               </div>
             )}
-            {realtime.status === 'idle'
+            {!realtime.limitReason && realtime.status === 'idle'
               && realtime.supported
               && !realtime.isIntakeComplete
               && !intakeSaved
@@ -887,15 +909,15 @@ export default function RealtimeVoiceIntake({
                   type="button"
                   onClick={resumeVoice}
                 >
-                  Resume voice intake
+                  Resume intake
                 </button>
-                <button
+                {onFallbackToText && <button
                   className="realtime-intake__fallback"
                   type="button"
                   onClick={continueByText}
                 >
                   Continue by text
-                </button>
+                </button>}
               </div>
             )}
           </div>

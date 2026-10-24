@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
-  Banknote,
   CalendarDays,
-  ChevronDown,
-  ChevronUp,
+  ChevronRight,
+  ChevronLeft,
   Clock3,
   ExternalLink,
   FileText,
-  HeartPulse,
   MapPin,
+  LogOut,
   Pencil,
   Plus,
   Save,
@@ -21,7 +20,7 @@ import {
   X,
 } from 'lucide-react'
 import { Link, Navigate, useParams } from 'react-router-dom'
-import { getSession, onAuthStateChange } from '../../api/auth'
+import { getSession, onAuthStateChange, signOut } from '../../api/auth'
 import {
   getCaseDetails,
   updateCaseDetails,
@@ -42,10 +41,10 @@ import {
 import { normalizeStoragePath } from '../../storage/paths'
 import { formatDisplayDate } from '../../utils/formatDate'
 import { formatCaseStatus } from '../../utils/formatCaseStatus'
+import Logo from '../../assets/tli_logo.png'
 import './CaseDetails.css'
 
 type CaseEditSection = 'all' | 'overview' | 'damages' | 'parties' | 'contact' | 'documents'
-type ExpandableCaseSection = 'overview' | 'damages' | 'agreements'
 type CollectionView = 'parties' | 'documents'
 
 const editSectionLabels: Record<CaseEditSection, string> = {
@@ -112,11 +111,55 @@ function CaseDetails() {
   const [saveError, setSaveError] = useState('')
   const [pendingEditFiles, setPendingEditFiles] = useState<PendingEditFile[]>([])
   const [deletedDocumentPaths, setDeletedDocumentPaths] = useState<string[]>([])
+  const [signingOut, setSigningOut] = useState(false)
+  const [signOutError, setSignOutError] = useState('')
+  const handleSignOut = async () => {
+    setSigningOut(true)
+    setSignOutError('')
+    try {
+      const { error } = await signOut()
+      if (error) setSignOutError(error.message || 'Unable to sign out. Please try again.')
+    } catch {
+      setSignOutError('Unable to sign out. Please try again.')
+    } finally { setSigningOut(false) }
+  }
+  const [activeSection, setActiveSection] = useState('case-overview')
+  const [sidebarExpanded, setSidebarExpanded] = useState(true)
   const [collectionView, setCollectionView] = useState<CollectionView | null>(null)
   const [stateCodes, setStateCodes] = useState<StateCode[]>([])
-  const [expandedSections, setExpandedSections] = useState<
-    Partial<Record<ExpandableCaseSection, boolean>>
-  >({})
+  useEffect(() => {
+    document.body.classList.add('case-record-view')
+    return () => document.body.classList.remove('case-record-view')
+  }, [])
+
+  useEffect(() => {
+    if (loading || !caseSummary) return
+    let frame = 0
+    const updateSection = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const ids = ['case-overview', 'case-damages', 'case-contact', 'documents', 'case-parties', 'agreements']
+        const mobileNav = document.querySelector('.case-section-nav')
+        const threshold = window.innerWidth <= 850
+          ? Math.max(310, (mobileNav?.getBoundingClientRect().height ?? 0) + 28)
+          : 120
+        let current = ids[0]
+        for (const id of ids) {
+          if ((document.getElementById(id)?.getBoundingClientRect().top ?? Infinity) <= threshold) current = id
+        }
+        setActiveSection(current)
+      })
+    }
+    updateSection()
+    window.addEventListener('scroll', updateSection, { passive: true })
+    window.addEventListener('resize', updateSection)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', updateSection)
+      window.removeEventListener('resize', updateSection)
+    }
+  }, [loading, caseSummary, sidebarExpanded])
+
   const editPanelRef = useRef<HTMLFormElement>(null)
   const editFileInputRef = useRef<HTMLInputElement>(null)
 
@@ -236,9 +279,13 @@ function CaseDetails() {
 
   useEffect(() => {
     if (!editSection) return
-    window.requestAnimationFrame(() => {
-      editPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const frame = window.requestAnimationFrame(() => {
+      if (editSection === 'all') {
+        editPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+      editPanelRef.current?.querySelector<HTMLInputElement>('input, select, textarea')?.focus({ preventScroll: true })
     })
+    return () => window.cancelAnimationFrame(frame)
   }, [editSection])
 
   const beginEditing = (section: CaseEditSection = 'all') => {
@@ -407,12 +454,6 @@ function CaseDetails() {
     )
   }
 
-  const toggleExpanded = (section: ExpandableCaseSection) => {
-    setExpandedSections((current) => ({
-      ...current,
-      [section]: !current[section],
-    }))
-  }
 
   const saveEdits = async (event) => {
     event.preventDefault()
@@ -501,84 +542,19 @@ function CaseDetails() {
     incident?.description
     || caseSummary?.description
     || 'No incident description was recorded.'
-  const overviewCanExpand = overviewText.length > 280
-  const damageDetailItems = [
-    ['Injuries', damages?.injuries],
-    ['Treatment', damages?.treatment],
-    ['Emotional impact', damages?.emotional_impact],
-    ['Other losses', damages?.other_damages],
-    ['Additional details', damages?.details],
-  ].filter((item): item is [string, string] => Boolean(item[1]))
-  const damageDetailsCanExpand =
-    damageDetailItems.length > 2
-    || damageDetailItems.some(([, value]) => value.length > 180)
-  const visibleDamageDetails = expandedSections.damages
-    ? damageDetailItems
-    : damageDetailItems.slice(0, 2)
-  const visibleParties = parties.slice(0, 1)
-  const visibleDocuments = documents.slice(0, 1)
-  const visibleAgreements = expandedSections.agreements ? agreements : agreements.slice(0, 3)
+  const visibleParties = parties
+  const visibleDocuments = documents
+  const visibleAgreements = agreements
 
-  return (
-    <main className="dashboard case-detail-page">
-      <section className="case-detail-shell">
-        <nav className="case-detail-nav" aria-label="Case navigation">
-          <Link to="/dashboard" className="case-detail-back">
-            <ArrowLeft aria-hidden="true" />
-            All cases
-          </Link>
-          {caseSummary && (
-            <div className="case-detail-nav__actions">
-              <span className={`case-status case-status--${caseSummary.status.toLowerCase()}`}>
-                <i aria-hidden="true" />
-                {formatCaseStatus(caseSummary.status)}
-              </span>
-              <button
-                type="button"
-                className="case-edit-toggle"
-                onClick={() => editDraft ? cancelEditing() : beginEditing('all')}
-                disabled={isSaving}
-              >
-                {editDraft ? <X aria-hidden="true" /> : <Pencil aria-hidden="true" />}
-                {editDraft ? 'Cancel editing' : 'Edit all details'}
-              </button>
-            </div>
-          )}
-        </nav>
+  const sectionActions = (section: CaseEditSection) => editSection === section && editDraft ? (
+    <div className="case-panel__actions">
+      <button type="button" className="case-edit-preview" disabled={isSaving} onClick={cancelEditing}>Cancel</button>
+      <button type="submit" className="case-edit-toggle" disabled={isSaving}><Save aria-hidden="true" />{isSaving ? 'Saving…' : 'Save changes'}</button>
+    </div>
+  ) : <CardEditButton onClick={() => beginEditing(section)} />
 
-        {loading && <p className="helper-text">Loading case details…</p>}
-        {error && <p className="error">{error}</p>}
-        {saveError && !editDraft && <p className="error">{saveError}</p>}
-
-        {!loading && !error && caseSummary && (
-          <>
-            <header className="case-hero">
-              <div className="case-hero__copy">
-                <p className="case-eyebrow">Case workspace</p>
-                <h1>{location || 'Submitted case'}</h1>
-                <p>
-                  Submitted {formatDisplayDate(caseSummary.created_at)} · Case #
-                  {caseSummary.case_id.slice(0, 8).toUpperCase()}
-                </p>
-              </div>
-              <div className="case-hero__metrics">
-                <div>
-                  <span>Known financial impact</span>
-                  <strong>{formatCurrency(knownDamages)}</strong>
-                </div>
-                <div>
-                  <span>Incident date</span>
-                  <strong>{formatDisplayDate(caseSummary.incident_date)}</strong>
-                </div>
-                <div>
-                  <span>Files</span>
-                  <strong>{documents.length}</strong>
-                </div>
-              </div>
-            </header>
-
-            {editDraft && (
-              <form ref={editPanelRef} className="case-edit-panel" onSubmit={saveEdits}>
+  const editForm = editDraft ? (
+<form ref={editPanelRef} className="case-edit-panel" onSubmit={saveEdits}>
                 <div className="case-edit-panel__heading">
                   <div>
                     <p className="case-eyebrow">Edit intake</p>
@@ -899,6 +875,7 @@ function CaseDetails() {
                 {(editSection === 'all' || editSection === 'documents') && (
                   <fieldset>
                     <legend>Case file details</legend>
+                    {viewError && <p className="error" role="alert">{viewError}</p>}
                     {editDraft.documents.length === 0 && pendingEditFiles.length === 0 && (
                       <p className="case-edit-empty">No case files added yet.</p>
                     )}
@@ -906,7 +883,19 @@ function CaseDetails() {
                       {editDraft.documents.map((document, documentIndex) => (
                         <div className="case-edit-item" key={document.id}>
                           <div className="case-edit-item__actions">
-                            <span />
+                            <button
+                              type="button"
+                              className="case-edit-preview"
+                              disabled={viewingDocId === document.id}
+                              onClick={() => {
+                                const file = documents.find(item => item.id === document.id)
+                                if (file) void handleViewDocument(file)
+                              }}
+                              aria-label={`Preview ${document.originalFilename || 'case file'}`}
+                            >
+                              <ExternalLink aria-hidden="true" />
+                              {viewingDocId === document.id ? 'Opening…' : 'Preview'}
+                            </button>
                             <button
                               type="button"
                               className="case-edit-remove"
@@ -1064,11 +1053,101 @@ function CaseDetails() {
                   </button>
                 </div>
               </form>
-            )}
+  ) : null
 
+  return (
+    <main className="dashboard case-detail-page">
+      <section className="case-detail-shell">
+
+
+        {loading && <p className="helper-text">Loading case details…</p>}
+        {error && <p className="error">{error} <Link to="/dashboard">All cases</Link></p>}
+        {saveError && !editDraft && <p className="error">{saveError}</p>}
+
+        {!loading && !error && caseSummary && (
+          <>
+            <div className={`case-workspace${sidebarExpanded ? '' : ' case-workspace--collapsed'}`}>
+            <aside className="case-section-nav">
+              <Link to="/" className="case-sidebar-brand" aria-label="True Legal Innovations home">
+                <img src={Logo} alt="" />
+                {sidebarExpanded && <span>True Legal<br />Innovations</span>}
+              </Link>
+          <Link to="/dashboard" className="case-detail-back">
+            <ArrowLeft aria-hidden="true" />
+            All cases
+          </Link>
+              <button type="button" aria-expanded={sidebarExpanded} aria-controls="case-section-links"
+                onClick={() => setSidebarExpanded(value => !value)}>
+                <span>{sidebarExpanded ? 'Case sections' : 'Sections'}</span>
+                {sidebarExpanded ? <ChevronLeft aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
+              </button>
+              <nav id="case-section-links" aria-label="Jump to case section" hidden={!sidebarExpanded}>
+                {[
+                  ['case-overview', 'Overview'], ['case-damages', 'Damages and expenses'],
+                  ['case-contact', 'Your contact details'], ['documents', 'Documents'],
+                  ['case-parties', 'People and organizations'], ['agreements', 'Offers'],
+                ].map(([id, label]) => <a key={id} href={`#${id}`} aria-current={activeSection === id ? 'location' : undefined}>{label}</a>)}
+              </nav>
+              <div className="case-sidebar-account">
+                {signOutError && <p role="alert" className="error">{signOutError}</p>}
+                <button type="button" className="case-sidebar-signout" onClick={handleSignOut} disabled={signingOut}>
+                  <span>{signingOut ? 'Signing out…' : 'Sign out'}</span>
+                  <LogOut aria-hidden="true" />
+                </button>
+              </div>
+            </aside>
+            <div className="case-workspace-body">
+
+            <header className="case-hero">
+              <div className="case-hero__copy">
+                <p className="case-eyebrow">Case workspace</p>
+                <h1>{location || 'Submitted case'}</h1>
+                <p>
+                  Submitted {formatDisplayDate(caseSummary.created_at)} · Case #
+                  {caseSummary.case_id.slice(0, 8).toUpperCase()}
+                </p>
+              </div>
+              <div className="case-hero__metrics">
+                <div>
+                  <span>Known financial impact</span>
+                  <strong>{formatCurrency(knownDamages)}</strong>
+                </div>
+                <div>
+                  <span>Incident date</span>
+                  <strong>{formatDisplayDate(caseSummary.incident_date)}</strong>
+                </div>
+                <div>
+                  <span>Files</span>
+                  <strong>{documents.length}</strong>
+                </div>
+              </div>
+                    <nav className="case-detail-nav" aria-label="Case navigation">
+
+          {caseSummary && (
+            <div className="case-detail-nav__actions">
+              <span className={`case-status case-status--${caseSummary.status.toLowerCase()}`}>
+                <i aria-hidden="true" />
+                {formatCaseStatus(caseSummary.status)}
+              </span>
+              <button
+                type="button"
+                className="case-edit-toggle"
+                onClick={() => editDraft ? cancelEditing() : beginEditing('all')}
+                disabled={isSaving}
+              >
+                {editDraft ? <X aria-hidden="true" /> : <Pencil aria-hidden="true" />}
+                {editDraft ? 'Cancel editing' : 'Edit all details'}
+              </button>
+            </div>
+          )}
+        </nav>
+            </header>
+
+            {editSection === 'all' && editDraft ? editForm : (<>
             <div className="case-content-grid">
               <div className="case-content-main">
-                <section className="case-panel case-overview">
+                <section className="case-panel case-overview" id="case-overview">
+                  <form className="case-values-inline" onSubmit={saveEdits}>
                   <div className="case-panel__heading case-panel__heading--action">
                     <div className="case-panel__heading-copy">
                       <div className="case-panel__icon"><FileText aria-hidden="true" /></div>
@@ -1078,31 +1157,28 @@ function CaseDetails() {
                       </div>
                     </div>
                     <div className="case-panel__actions">
-                      {overviewCanExpand && (
-                        <PanelExpandButton
-                          expanded={Boolean(expandedSections.overview)}
-                          onClick={() => toggleExpanded('overview')}
-                        />
-                      )}
-                      <CardEditButton
-                        active={editSection === 'overview'}
-                        onClick={() => beginEditing('overview')}
-                      />
+                      {sectionActions('overview')}
                     </div>
                   </div>
-                  <p className={`case-narrative${expandedSections.overview ? ' is-expanded' : ''}`}>
-                    {overviewText}
-                  </p>
+                  {editSection === 'overview' && editDraft ? <textarea aria-label="What happened" rows={3} required disabled={isSaving} value={editDraft.incident.description}
+                    onChange={e => setEditDraft({...editDraft, incident: {...editDraft.incident, description: e.target.value}})} />
+                    : <p className="case-narrative is-expanded">{overviewText}</p>}
                   <div className="case-facts">
                     <div>
                       <MapPin aria-hidden="true" />
                       <span>Location</span>
-                      <strong>{location || 'Not provided'}</strong>
+                      {editSection === 'overview' && editDraft ? <div className="case-inline-location">
+                      <input aria-label="City" value={editDraft.incident.city} disabled={isSaving} onChange={e => setEditDraft({...editDraft, incident: {...editDraft.incident, city: e.target.value}})} />
+                      <select aria-label="State" value={editDraft.incident.stateCode} disabled={isSaving} onChange={e => setEditDraft({...editDraft, incident: {...editDraft.incident, stateCode: e.target.value}})}>
+                        <option value="">Select state</option>{stateCodes.map(state => <option key={state.code} value={state.code}>{state.code}</option>)}
+                      </select>
+                      <input aria-label="Location details" value={editDraft.incident.locationDetails} disabled={isSaving} onChange={e => setEditDraft({...editDraft, incident: {...editDraft.incident, locationDetails: e.target.value}})} />
+                    </div> : <strong>{location || 'Not provided'}</strong>}
                     </div>
                     <div>
                       <CalendarDays aria-hidden="true" />
                       <span>Incident date</span>
-                      <strong>{formatDisplayDate(caseSummary.incident_date, 'Not provided')}</strong>
+                      {editSection === 'overview' && editDraft ? <input type="date" aria-label="Incident date" value={editDraft.incident.incidentDate} disabled={isSaving} onChange={e => setEditDraft({...editDraft, incident: {...editDraft.incident, incidentDate: e.target.value}})} /> : <strong>{formatDisplayDate(caseSummary.incident_date, 'Not provided')}</strong>}
                     </div>
                     <div>
                       <Clock3 aria-hidden="true" />
@@ -1110,121 +1186,99 @@ function CaseDetails() {
                       <strong>{formatDisplayDate(caseSummary.updated_at)}</strong>
                     </div>
                   </div>
+                                  {editSection === 'overview' && saveError && <p role="alert" className="error">{saveError}</p>}</form>
                 </section>
 
-                <section className="case-panel case-damages">
-                  <div className="case-panel__heading case-panel__heading--action">
-                    <div className="case-panel__heading-copy">
-                      <div className="case-panel__icon case-panel__icon--rose">
-                        <HeartPulse aria-hidden="true" />
-                      </div>
+                <section className="case-panel case-damages" id="case-damages">
+                  <form className="case-damages-inline" onSubmit={saveEdits}>
+                    <div className="case-panel__heading case-panel__heading--action">
                       <div>
                         <p className="case-eyebrow">Financial impact</p>
                         <h2>Damages and expenses</h2>
                       </div>
-                    </div>
-                    <div className="case-panel__actions">
-                      {damageDetailsCanExpand && (
-                        <PanelExpandButton
-                          expanded={Boolean(expandedSections.damages)}
-                          onClick={() => toggleExpanded('damages')}
-                        />
-                      )}
-                      <CardEditButton
-                        active={editSection === 'damages'}
-                        onClick={() => beginEditing('damages')}
-                      />
-                    </div>
-                  </div>
-                  {damages ? (
-                    <>
-                      <div className="damage-grid">
-                        <div className="damage-card damage-card--primary">
-                          <HeartPulse aria-hidden="true" />
-                          <span>Medical bills</span>
-                          <strong>{formatCurrency(damages.medical_bills_usd)}</strong>
-                          <small>Medical expenses reported during intake</small>
-                        </div>
-                        <div className="damage-card">
-                          <Banknote aria-hidden="true" />
-                          <span>Property damage</span>
-                          <strong>{formatCurrency(damages.property_damage_usd)}</strong>
-                        </div>
-                        <div className="damage-card">
-                          <Banknote aria-hidden="true" />
-                          <span>Estimated lost wages</span>
-                          <strong>{formatCurrency(damages.lost_wages_usd)}</strong>
-                        </div>
-                        <div className="damage-card">
-                          <Banknote aria-hidden="true" />
-                          <span>Other expenses</span>
-                          <strong>{formatCurrency(damages.other_expenses_usd)}</strong>
-                        </div>
-                        <div className="damage-card">
-                          <CalendarDays aria-hidden="true" />
-                          <span>Work days missed</span>
-                          <strong>{damages.days_missed > 0 ? damages.days_missed : 'Not provided'}</strong>
-                        </div>
-                        <div className="damage-card">
-                          <Clock3 aria-hidden="true" />
-                          <span>Hourly rate</span>
-                          <strong>{formatCurrency(damages.hourly_rate_usd)}</strong>
-                        </div>
+                      <div className="case-panel__actions">
+                        {editSection === 'damages' && editDraft ? (<>
+                          <button type="button" className="case-edit-preview" onClick={cancelEditing} disabled={isSaving}>Cancel</button>
+                          <button type="submit" className="case-edit-toggle" disabled={isSaving}>
+                            <Save aria-hidden="true" />{isSaving ? 'Saving…' : 'Save changes'}
+                          </button>
+                        </>) : <CardEditButton onClick={() => beginEditing('damages')} />}
                       </div>
-                      {visibleDamageDetails.length > 0 && (
-                        <dl className={`damage-details${expandedSections.damages ? ' is-expanded' : ''}`}>
-                          {visibleDamageDetails.map(([label, value]) => (
-                            <div key={label}>
-                              <dt>{label}</dt>
-                              <dd>{value}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      )}
-                    </>
-                  ) : (
-                    <div className="case-empty">
-                      <HeartPulse aria-hidden="true" />
-                      <p>No damages information was recorded during intake.</p>
                     </div>
-                  )}
+                    <div className="damage-grid">
+                      {([
+                        ['medicalBillsUsd', 'medical_bills_usd', 'Medical bills'],
+                        ['propertyDamageUsd', 'property_damage_usd', 'Property damage'],
+                        ['lostWagesUsd', 'lost_wages_usd', 'Estimated lost wages'],
+                        ['otherExpensesUsd', 'other_expenses_usd', 'Other expenses'],
+                        ['daysMissed', 'days_missed', 'Work days missed'],
+                        ['hourlyRateUsd', 'hourly_rate_usd', 'Hourly rate'],
+                      ] as const).map(([field, storedField, label]) => (
+                        <div className="damage-card" key={field}>
+                          <span>{label}</span>
+                          {editSection === 'damages' && editDraft ? (
+                            <input aria-label={label} type="number" min="0"
+                              step={field === 'daysMissed' ? '1' : '0.01'}
+                              disabled={isSaving} value={editDraft.damages[field]}
+                              onChange={event => setEditDraft({ ...editDraft, damages: { ...editDraft.damages, [field]: event.target.value } })} />
+                          ) : <strong>{field === 'daysMissed'
+                            ? (damages?.days_missed > 0 ? damages.days_missed : 'Not provided')
+                            : formatCurrency(damages?.[storedField])}</strong>}
+                        </div>
+                      ))}
+                    </div>
+                    <dl className="damage-details is-expanded">
+                      {([
+                        ['injuries', 'injuries', 'Injuries'], ['treatment', 'treatment', 'Treatment'],
+                        ['emotionalImpact', 'emotional_impact', 'Emotional impact'],
+                        ['otherDamages', 'other_damages', 'Other losses'], ['details', 'details', 'Additional details'],
+                      ] as const).filter(([, storedField]) => editSection === 'damages' || damages?.[storedField]).map(([field, storedField, label]) => (
+                        <div key={field}>
+                          <dt>{label}</dt>
+                          <dd>{editSection === 'damages' && editDraft ? (
+                            <textarea aria-label={label} rows={2} disabled={isSaving} value={editDraft.damages[field]}
+                              onChange={event => setEditDraft({ ...editDraft, damages: { ...editDraft.damages, [field]: event.target.value } })} />
+                          ) : damages?.[storedField]}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                    {editSection === 'damages' && saveError && <p className="error" role="alert">{saveError}</p>}
+                  </form>
                 </section>
 
               </div>
 
-              <aside className="case-content-side">
-                <section className="case-panel">
+              <div className="case-content-side">
+                <section className="case-panel" id="case-contact">
+                  <form className="case-values-inline" onSubmit={saveEdits}>
                   <div className="case-panel__heading case-panel__heading--action">
                     <div className="case-panel__heading-copy">
                       <div className="case-panel__icon"><UserRound aria-hidden="true" /></div>
                       <div>
                         <p className="case-eyebrow">Primary contact</p>
-                        <h2>Your details</h2>
+                        <h2>Your contact details</h2>
                       </div>
                     </div>
-                    <CardEditButton
-                      active={editSection === 'contact'}
-                      onClick={() => beginEditing('contact')}
-                    />
+                    {sectionActions('contact')}
                   </div>
-                  {contact ? (
-                    <dl className="contact-list">
-                      <div><dt>Name</dt><dd>{contact.full_name || 'Not provided'}</dd></div>
-                      <div>
-                        <dt>Email</dt>
-                        <dd className="contact-list__email" title={contact.email}>
-                          {contact.email || 'Not provided'}
-                        </dd>
-                      </div>
-                      <div><dt>Phone</dt><dd>{contact.phone || 'Not provided'}</dd></div>
-                      <div><dt>Preferred contact</dt><dd>{contact.method || 'Email'}</dd></div>
-                    </dl>
-                  ) : (
-                    <p className="case-muted">No contact information recorded.</p>
-                  )}
+                  <dl className="contact-list">
+                    {([['fullName', 'full_name', 'Name'], ['email', 'email', 'Email'], ['phone', 'phone', 'Phone'], ['method', 'method', 'Preferred contact']] as const).map(([field, stored, label]) => (
+                      <div key={field}><dt>{label}</dt><dd className={field === 'email' ? 'contact-list__email' : undefined}>
+                        {editSection === 'contact' && editDraft ? field === 'method' ? (
+                          <select aria-label={label} disabled={isSaving} value={editDraft.contact.method} onChange={e => setEditDraft({...editDraft, contact: {...editDraft.contact, method: e.target.value}})}>
+                            <option value="email">Email</option><option value="phone">Phone</option><option value="text">Text</option>
+                          </select>
+                        ) : <input aria-label={label} type={field === 'email' ? 'email' : field === 'phone' ? 'tel' : 'text'} disabled={isSaving} value={editDraft.contact[field]} onChange={e => setEditDraft({...editDraft, contact: {...editDraft.contact, [field]: e.target.value}})} />
+                        : contact?.[stored] || 'Not provided'}
+                      </dd></div>
+                    ))}
+                  </dl>
+                                  {editSection === 'contact' && saveError && <p role="alert" className="error">{saveError}</p>}</form>
                 </section>
 
                 <section className="case-panel" id="documents">
+                  {editSection === 'documents' && editDraft ? editForm : (<>
+                  <form className="case-values-inline" onSubmit={saveEdits}>
                   <div className="case-panel__heading case-panel__heading--action">
                     <div className="case-panel__heading-copy">
                       <div className="case-panel__icon"><FileText aria-hidden="true" /></div>
@@ -1234,20 +1288,7 @@ function CaseDetails() {
                       </div>
                     </div>
                     <div className="case-panel__actions">
-                      {documents.length > 1 && (
-                        <button
-                          type="button"
-                          className="case-panel-expand"
-                          onClick={() => setCollectionView('documents')}
-                          aria-haspopup="dialog"
-                        >
-                          View all ({documents.length})
-                        </button>
-                      )}
-                      <CardEditButton
-                        active={editSection === 'documents'}
-                        onClick={() => beginEditing('documents')}
-                      />
+                      {sectionActions('documents')}
                       <button
                         type="button"
                         className="case-icon-button"
@@ -1259,17 +1300,20 @@ function CaseDetails() {
                       </button>
                     </div>
                   </div>
-                  {documents.length ? (
+                  {(editSection === 'documents' && editDraft ? editDraft.documents.length : documents.length) ? (
                     <div className="case-file-list">
-                      {visibleDocuments.map((doc) => (
+                      {(editSection === 'documents' && editDraft ? editDraft.documents.map(file => ({...documents.find(item => item.id === file.id), id: file.id, original_filename: file.originalFilename, kind: file.kind, notes: file.notes})) : visibleDocuments).map((doc) => (
                         <article key={doc.id} className="case-file">
                           <div className="case-file__icon"><FileText aria-hidden="true" /></div>
                           <div>
-                            <strong>{doc.original_filename || 'Uploaded file'}</strong>
+                            {editSection === 'documents' && editDraft ? <input aria-label="File name" disabled={isSaving} value={doc.original_filename} onChange={e => setEditDraft({...editDraft, documents: editDraft.documents.map(file => file.id === doc.id ? {...file, originalFilename: e.target.value} : file)})} /> : <strong>{doc.original_filename || 'Uploaded file'}</strong>}
                             <span>
-                              {formatDocumentKind(doc.kind)} · Uploaded {formatDisplayDate(doc.uploaded_at)}
+                              {editSection === 'documents' && editDraft ? <select aria-label="File type" disabled={isSaving} value={doc.kind} onChange={e => setEditDraft({...editDraft, documents: editDraft.documents.map(file => file.id === doc.id ? {...file, kind: e.target.value} : file)})}>
+                                <option value="other">Other</option><option value="police_report">Police report</option><option value="er_bill">Medical bill</option><option value="medical_bill">Medical bill (existing)</option><option value="photos">Photo</option>
+                              </select> : formatDocumentKind(doc.kind)} · Uploaded {formatDisplayDate(doc.uploaded_at)}
                             </span>
-                            {doc.notes && <p className="case-file__notes">{doc.notes}</p>}
+                            {editSection === 'documents' && editDraft ? <textarea aria-label="File notes" rows={2} disabled={isSaving} value={doc.notes || ''} onChange={e => setEditDraft({...editDraft, documents: editDraft.documents.map(file => file.id === doc.id ? {...file, notes: e.target.value} : file)})} /> : doc.notes && <p className="case-file__notes">{doc.notes}</p>}
+                            {editSection === 'documents' && <button type="button" className="case-edit-remove" disabled={isSaving} onClick={() => removeDocument(doc.id)}><Trash2 aria-hidden="true" />Delete</button>}
                           </div>
                           <button
                             type="button"
@@ -1293,10 +1337,69 @@ function CaseDetails() {
                       <span>PDF, images, Word documents, or TXT files</span>
                     </button>
                   )}
+                  {editSection === 'documents' && <>
+                    <input ref={editFileInputRef} className="case-edit-file-input" type="file" multiple accept={ACCEPTED_CASE_FILE_TYPES} onChange={handleEditFilesSelected} />
+                      {pendingEditFiles.map((pendingFile) => {
+                        const key = fileKey(pendingFile.file)
+                        return (
+                        <div className="case-edit-pending-file" key={key}>
+                          <span className="case-edit-new-label">New case file</span>
+                          <div className="case-edit-pending-file__heading">
+                            <div>
+                              <strong>{pendingFile.file.name}</strong>
+                              <span>
+                                {formatFileSize(pendingFile.file.size)} · Ready to upload
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              className="case-edit-remove"
+                              onClick={() => removePendingEditFile(key)}
+                              aria-label={`Remove ${pendingFile.file.name}`}
+                            >
+                              <Trash2 aria-hidden="true" />
+                              Remove
+                            </button>
+                          </div>
+                          <div className="case-edit-grid">
+                            <label>
+                              <span>File type</span>
+                              <select
+                                value={pendingFile.kind}
+                                onChange={(event) => updatePendingEditFile(key, {
+                                  kind: event.target.value,
+                                })}
+                              >
+                                <option value="other">Other</option>
+                                <option value="police_report">Police report</option>
+                                <option value="er_bill">Medical bill</option>
+                                <option value="photos">Photo</option>
+                              </select>
+                            </label>
+                            <label className="case-edit-grid__wide">
+                              <span>Notes</span>
+                              <textarea
+                                rows={2}
+                                value={pendingFile.notes}
+                                placeholder="Add a description or context for this file"
+                                onChange={(event) => updatePendingEditFile(key, {
+                                  notes: event.target.value,
+                                })}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      )})}
+                    {editDraft && editDraft.deletedDocumentIds.length > 0 && <p className="error">{editDraft.deletedDocumentIds.length} file(s) will be deleted when you save.</p>}
+                  </>}
                   {viewError && <p className="error">{viewError}</p>}
+                                  {editSection === 'documents' && saveError && <p role="alert" className="error">{saveError}</p>}</form>
+                  </>)}
                 </section>
 
-                <section className="case-panel case-parties">
+                <section className="case-panel case-parties" id="case-parties">
+                  {editSection === 'parties' && editDraft ? editForm : (<>
+                  <form className="case-values-inline" onSubmit={saveEdits}>
                   <div className="case-panel__heading case-panel__heading--action">
                     <div className="case-panel__heading-copy">
                       <div className="case-panel__icon"><UsersRound aria-hidden="true" /></div>
@@ -1306,35 +1409,29 @@ function CaseDetails() {
                       </div>
                     </div>
                     <div className="case-panel__actions">
-                      {parties.length > 1 && (
-                        <button
-                          type="button"
-                          className="case-panel-expand"
-                          onClick={() => setCollectionView('parties')}
-                          aria-haspopup="dialog"
-                        >
-                          View all ({parties.length})
-                        </button>
-                      )}
-                      <CardEditButton
-                        active={editSection === 'parties'}
-                        onClick={() => beginEditing('parties')}
-                      />
+                      {sectionActions('parties')}
                     </div>
                   </div>
-                  {parties.length ? (
+                  {(editSection === 'parties' && editDraft ? editDraft.parties.length : parties.length) ? (
                     <div className="party-grid">
-                      {visibleParties.map((party) => (
+                      {(editSection === 'parties' && editDraft ? editDraft.parties.map(party => ({...party, insurer_name: party.insurerName, policy_number: party.policyNumber, claim_number: party.claimNumber})) : visibleParties).map((party) => (
                         <article key={party.id} className="party-card">
                           <div className="party-card__avatar" aria-hidden="true">
                             {party.name?.charAt(0)?.toUpperCase() || '?'}
                           </div>
                           <div>
-                            <span>{formatPartyRole(party.role)}</span>
-                            <strong>{party.name || 'Unknown party'}</strong>
-                            {party.insurer_name && <p>Insurer: {party.insurer_name}</p>}
-                            {party.policy_number && <p>Policy: {party.policy_number}</p>}
-                            {party.claim_number && <p>Claim: {party.claim_number}</p>}
+                            {editSection === 'parties' && editDraft ? <>
+                              <select aria-label="Party role" value={party.role} disabled={isSaving} onChange={e => setEditDraft({...editDraft, parties: editDraft.parties.map(item => item.id === party.id ? {...item, role: e.target.value} : item)})}>
+                                <option value="defendant">Defendant</option><option value="insurer">Insurer</option><option value="witness">Witness</option><option value="other">Other</option>
+                              </select>
+                              {([['name', 'Name'], ['insurerName', 'Insurer'], ['policyNumber', 'Policy number'], ['claimNumber', 'Claim number']] as const).map(([field, label]) => <input key={field} aria-label={label} placeholder={label} required={field === 'name'} disabled={isSaving} value={editDraft.parties.find(item => item.id === party.id)?.[field] || ''} onChange={e => setEditDraft({...editDraft, parties: editDraft.parties.map(item => item.id === party.id ? {...item, [field]: e.target.value} : item)})} />)}
+                              <button type="button" className="case-edit-remove" disabled={isSaving} onClick={() => removeParty(party.id)}><Trash2 aria-hidden="true" />Delete</button>
+                            </> : <>
+                              <span>{formatPartyRole(party.role)}</span><strong>{party.name || 'Unknown party'}</strong>
+                              {party.insurer_name && <p>Insurer: {party.insurer_name}</p>}
+                              {party.policy_number && <p>Policy: {party.policy_number}</p>}
+                              {party.claim_number && <p>Claim: {party.claim_number}</p>}
+                            </>}
                           </div>
                         </article>
                       ))}
@@ -1345,8 +1442,11 @@ function CaseDetails() {
                       <p>No additional parties were recorded.</p>
                     </div>
                   )}
+                                  {editSection === 'parties' && <button type="button" className="case-edit-add" disabled={isSaving} onClick={addParty}><Plus aria-hidden="true" />Add party</button>}
+                  {editSection === 'parties' && saveError && <p role="alert" className="error">{saveError}</p>}</form>
+                  </>)}
                 </section>
-              </aside>
+              </div>
             </div>
 
             <section className="case-panel case-agreements" id="agreements">
@@ -1355,16 +1455,9 @@ function CaseDetails() {
                   <div className="case-panel__icon"><ShieldCheck aria-hidden="true" /></div>
                   <div>
                     <p className="case-eyebrow">Representation</p>
-                    <h2>Lawyer-client agreements</h2>
+                    <h2>Offers</h2>
                   </div>
                 </div>
-                {agreements.length > 3 && (
-                  <PanelExpandButton
-                    expanded={Boolean(expandedSections.agreements)}
-                    count={agreements.length}
-                    onClick={() => toggleExpanded('agreements')}
-                  />
-                )}
               </div>
               <p className="case-agreements__description">
                 These are representation offers submitted by lawyers who are interested in your
@@ -1377,10 +1470,10 @@ function CaseDetails() {
                     return (
                       <article key={agreement.id} className="agreement-row">
                         <div>
-                          <strong>{file?.file_name || 'Agreement file'}</strong>
+                          <strong>{file?.file_name || 'Offer document'}</strong>
                           <span>Submitted {formatDisplayDate(agreement.created_at)}</span>
                           {agreement.message && (
-                            <p className={expandedSections.agreements ? 'is-expanded' : ''}>
+                            <p className="is-expanded">
                               {agreement.message}
                             </p>
                           )}
@@ -1391,7 +1484,7 @@ function CaseDetails() {
                           onClick={() => handleViewAgreement(agreement)}
                           disabled={viewingAgreementId === agreement.id}
                         >
-                          {viewingAgreementId === agreement.id ? 'Opening…' : 'View agreement'}
+                          {viewingAgreementId === agreement.id ? 'Opening…' : 'View offer'}
                         </button>
                       </article>
                     )
@@ -1401,6 +1494,9 @@ function CaseDetails() {
                 <p className="case-muted">No lawyers have submitted a representation offer yet.</p>
               )}
             </section>
+            </>)}
+            </div>
+            </div>
             {collectionView && (
               <div
                 className="case-collection-overlay"
@@ -1488,28 +1584,6 @@ function CaseDetails() {
         )}
       </section>
     </main>
-  )
-}
-
-function PanelExpandButton({
-  expanded,
-  count,
-  onClick,
-}: {
-  expanded: boolean
-  count?: number
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      className="case-panel-expand"
-      onClick={onClick}
-      aria-expanded={expanded}
-    >
-      {expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
-      {expanded ? 'Show less' : `Show all${count ? ` (${count})` : ''}`}
-    </button>
   )
 }
 

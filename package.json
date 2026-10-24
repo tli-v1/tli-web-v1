@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "deploy:staging": "git push origin main",
     "deploy:production": "npm run build && firebase deploy --only hosting",
-    "deploy": "npm run deploy:production"
+    "deploy": "npm run deploy:production",
+    "test:intake:live": "RUN_INTAKE_AGENT_INTEGRATION=1 vitest run test/integration/realtime/agent.live.test.ts --no-file-parallelism --reporter=verbose"
   },
   "dependencies": {
     "@dataconnect/generated": "file:src/dataconnect-generated",
@@ -25,6 +26,7 @@
     "@eslint/js": "^9.36.0",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^5.0.4",
     "eslint": "^9.36.0",
     "eslint-plugin-react-hooks": "^5.2.0",
@@ -32,6 +34,7 @@
     "globals": "^16.4.0",
     "typescript": "^5.7.2",
     "vite": "^7.1.7",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.5",
+    "ws": "^8.22.0"
   }
 }

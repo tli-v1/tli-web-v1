@@ -37,7 +37,8 @@
   text-shadow: 0 10px 22px rgba(2, 8, 28, 0.26);
 }
 
-.navbar--light .logo {
+.navbar--light .logo,
+.navbar--case .logo {
   color: #102a58;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.88);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildVoiceIntakeDraft } from './voiceIntakeDraft'
+import { buildVoiceIntakeDraft, detectIntakeQuestionStep } from './voiceIntakeDraft'
 
 describe('buildVoiceIntakeDraft', () => {
   it('groups voice answers by the question the agent asked', () => {
@@ -32,5 +32,23 @@ describe('buildVoiceIntakeDraft', () => {
     expect(draft.answers.contact).toBe(
       'Ethan Zhang.\n704-241-4979.\nEmail.',
     )
+  })
+})
+
+
+describe('shared conversational intake question detection', () => {
+  it('keeps a date clarification on the date step instead of advancing by reply count', () => {
+    expect(detectIntakeQuestionStep('That date seems to be in the future. What date did this happen?'))
+      .toBe('incidentDate')
+  })
+
+  it('uses the current question rather than a recap of earlier answers', () => {
+    expect(detectIntakeQuestionStep('You mentioned medical bills. What is your full name?'))
+      .toBe('contact')
+  })
+
+  it('does not infer a new step from an unrelated-answer warning', () => {
+    expect(detectIntakeQuestionStep('Please keep your answer related to the current question.'))
+      .toBeNull()
   })
 })

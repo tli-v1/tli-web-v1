@@ -1,3 +1,5 @@
+import { detectIntakeQuestionStep } from '../agent/voiceIntakeDraft'
+import { minervaRealtimeInstructions } from '../../functions/src/intakeInstructions'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   claimRealtimeIntakeSession,
@@ -22,24 +24,17 @@ const VOICE_UNAVAILABLE_MESSAGE =
   'Voice is temporarily unavailable. You can continue this intake by text.'
 const OFF_TOPIC_ENDING =
   'I’m going to pause this intake because the responses are not related to the questions.'
-const REALTIME_GUARDRAIL_INSTRUCTIONS = `Track consecutive answers that do not plausibly answer your current intake question.
-For the first and second irrelevant answer, briefly redirect to the same question and do not engage with unrelated content.
-For the third consecutive irrelevant answer, say exactly: "I’m going to pause this intake because the responses are not related to the questions. You can start again when you’re ready." Do not ask another question.
-Reset the count after a plausibly relevant answer. Ignore silence, background noise, isolated filler sounds, and unintelligible audio. Never infer an answer from them. Keep every response under 80 spoken words.
-Do not ask the user to speak or type an email address. Account email is collected by the secure form.
-Follow this intake order and do not skip ahead: first ask what happened; then when it happened; then where it happened; then who else was involved; then insurance or claim information; then files or notes; then injuries, treatment, expenses, missed work, property damage, emotional effects, and other losses; then name, phone if provided, and preferred contact method; then consent to securely store the information and contact the user about next steps.
-Keep each question concise. If the user says they do not know or do not have optional information, accept that answer and move on.
-When the legal intake is complete, say exactly: "Your intake is complete and ready to save. Please use the secure form below to sign in or create an account." Do not ask another question.`
+const REALTIME_GUARDRAIL_INSTRUCTIONS = minervaRealtimeInstructions
 const INTAKE_COMPLETE_PATTERN =
-  /\b(intake is complete|intake complete|complete and ready to save|ready for processing)\b/i
+  /^Your intake is complete and ready to save\. Please use the secure form below to sign in or create an account\.$/i
 const voiceQuestionSteps = [
   'whatHappened',
   'incidentDate',
   'location',
   'adverseParty',
   'insurerInfo',
-  'documents',
   'damages',
+  'documents',
   'contact',
   'consent',
 ] as const
@@ -77,7 +72,7 @@ interface RealtimeStartOptions {
   resume?: boolean
 }
 
-export function useRealtimeVoice() {
+export function useRealtimeVoice(mode: 'voice' | 'text' = 'voice') {
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
   const [messages, setMessages] = useState<RealtimeVoiceMessage[]>([])
   const [error, setError] = useState('')
@@ -108,11 +103,14 @@ export function useRealtimeVoice() {
   const pendingInputLockRef = useRef('')
   const pendingAssistantMessagesRef = useRef(new Map<string, PendingAssistantMessage[]>())
   const responsePausedLiveMicrophoneRef = useRef(false)
+  const latestQuestion = [...messages].reverse()
+    .filter(message => message.role === 'assistant')
+    .map(message => detectIntakeQuestionStep(message.content))
+    .find(Boolean)
   const currentQuestionId: RealtimeVoiceQuestionStep | null = isIntakeComplete
     ? null
-    : voiceQuestionSteps[
-      Math.min(userTurnCountRef.current, voiceQuestionSteps.length - 1)
-    ] ?? null
+    : (latestQuestion as RealtimeVoiceQuestionStep | undefined) ?? 'whatHappened'
+
 
   const publicConnectionError = useCallback((message: string) => {
     const normalized = message.toLowerCase()
@@ -128,11 +126,11 @@ export function useRealtimeVoice() {
       || normalized.includes('internal')
       || message.trim().startsWith('{')
     ) {
-      return VOICE_UNAVAILABLE_MESSAGE
+      return mode === 'text' ? 'Chat is temporarily unavailable. Please try reconnecting.' : VOICE_UNAVAILABLE_MESSAGE
     }
 
     return message
-  }, [])
+  }, [mode])
 
   const persistMessage = useCallback(async (
     role: RealtimeVoiceMessage['role'],
@@ -247,7 +245,7 @@ export function useRealtimeVoice() {
     const questionIndex = Math.min(userTurnCountRef.current, voiceQuestionSteps.length)
     const questionId = voiceQuestionSteps[questionIndex - 1] ?? 'additionalResponse'
 
-    trackIntakeQuestionAnswered('voice', {
+    trackIntakeQuestionAnswered(mode, {
       questionId,
       questionIndex,
       answerLength: content.length,
@@ -279,7 +277,7 @@ export function useRealtimeVoice() {
     }
 
     return true
-  }, [lockUserInput])
+  }, [lockUserInput, mode])
 
   const toggleMicrophone = useCallback(() => {
     if (limitReason) return
@@ -334,9 +332,7 @@ export function useRealtimeVoice() {
         muteMicrophone()
       }
       if (message.content.includes(OFF_TOPIC_ENDING)) {
-        window.setTimeout(() => {
-          lockUserInput('This intake was paused after three unrelated responses.')
-        }, 1200)
+        lockUserInput('The last three responses did not relate to the intake questions, so this conversation has been paused.')
       }
       void persistMessage('assistant', message.content, message.eventId)
     }
@@ -368,6 +364,8 @@ export function useRealtimeVoice() {
     }
     setError('')
 
+    respondingRef.current = true
+    setIsResponding(true)
     const messageId = `typed-${crypto.randomUUID()}`
     void persistMessage('user', cleanContent, messageId)
 
@@ -382,12 +380,12 @@ export function useRealtimeVoice() {
     dataChannel.send(JSON.stringify({
       type: 'response.create',
       response: {
-        output_modalities: ['audio'],
+        output_modalities: [mode === 'text' ? 'text' : 'audio'],
         instructions: REALTIME_GUARDRAIL_INSTRUCTIONS,
       },
     }))
     return true
-  }, [limitReason, persistMessage, registerUserInput])
+  }, [limitReason, persistMessage, registerUserInput, mode])
 
   const handleServerEvent = useCallback((event: RealtimeServerEvent) => {
     if (event.type === 'input_audio_buffer.speech_started') {
@@ -421,7 +419,7 @@ export function useRealtimeVoice() {
         dataChannel.send(JSON.stringify({
           type: 'response.create',
           response: {
-            output_modalities: ['audio'],
+            output_modalities: [mode === 'text' ? 'text' : 'audio'],
             instructions: REALTIME_GUARDRAIL_INSTRUCTIONS,
           },
         }))
@@ -486,7 +484,7 @@ export function useRealtimeVoice() {
         streamRef.current?.getAudioTracks().forEach((track) => {
           track.enabled = true
         })
-        setIsMicrophoneMuted(false)
+        setIsMicrophoneMuted(mode === 'text')
       }
       responsePausedLiveMicrophoneRef.current = false
       if (pendingInputLockRef.current) {
@@ -505,6 +503,7 @@ export function useRealtimeVoice() {
       setIsProcessingUserInput(false)
     }
   }, [
+    mode,
     finalizeAssistantMessages,
     limitReason,
     lockUserInput,
@@ -527,6 +526,11 @@ export function useRealtimeVoice() {
 
   const start = useCallback(async (options: RealtimeStartOptions = {}) => {
     if (startingRef.current || connectedRef.current) return
+    if (!window.RTCPeerConnection || (mode === 'voice' && !navigator.mediaDevices?.getUserMedia)) {
+      setStatus('error')
+      setError('This browser does not support this intake connection. Please use a current browser.')
+      return
+    }
     const initialUserMessage = options.initialUserMessage?.replace(/\s+/g, ' ').trim() ?? ''
     const shouldResume = Boolean(options.resume)
     const connectionAttempt = connectionAttemptRef.current + 1
@@ -564,7 +568,7 @@ export function useRealtimeVoice() {
 
       const [{ value: ephemeralKey }, stream] = await Promise.all([
         createMinervaRealtimeClientSecret(),
-        navigator.mediaDevices.getUserMedia({
+        mode === 'text' ? Promise.resolve(new MediaStream()) : navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
@@ -578,14 +582,17 @@ export function useRealtimeVoice() {
       }
 
       const peer = new RTCPeerConnection()
+      if (mode === 'text') peer.addTransceiver('audio', { direction: 'recvonly' })
       const audio = new Audio()
-      audio.autoplay = true
+      audio.autoplay = mode === 'voice'
+      audio.muted = mode === 'text'
       audioRef.current = audio
       streamRef.current = stream
-      setIsMicrophoneMuted(false)
+      setIsMicrophoneMuted(mode === 'text')
       peerRef.current = peer
 
       peer.ontrack = (event) => {
+        if (mode === 'text') return
         audio.srcObject = event.streams[0] ?? new MediaStream([event.track])
         event.track.addEventListener('ended', () => {
           failConnection('The agent audio connection ended. Try reconnecting.')
@@ -647,6 +654,8 @@ export function useRealtimeVoice() {
           type: 'session.update',
           session: {
             type: 'realtime',
+            output_modalities: [mode === 'text' ? 'text' : 'audio'],
+            instructions: REALTIME_GUARDRAIL_INSTRUCTIONS,
             max_output_tokens: 'inf',
             audio: {
               input: {
@@ -673,7 +682,7 @@ export function useRealtimeVoice() {
               type: 'response.create',
               response: {
                 instructions:
-                'Greet the user briefly, explain that you will ask one question at a time, and ask what happened.',
+                `${REALTIME_GUARDRAIL_INSTRUCTIONS}\n\nGreet the user briefly, explain that you will ask one question at a time, and ask what happened.`,
               },
             }))
           }
@@ -695,7 +704,7 @@ export function useRealtimeVoice() {
             type: 'response.create',
             response: {
               instructions:
-                'Greet the user briefly, explain that you will ask one question at a time, and ask what happened.',
+                `${REALTIME_GUARDRAIL_INSTRUCTIONS}\n\nGreet the user briefly, explain that you will ask one question at a time, and ask what happened.`,
             },
           }))
         }
@@ -771,6 +780,7 @@ export function useRealtimeVoice() {
       )
     }
   }, [
+    mode,
     ensureSession,
     handleServerEvent,
     lockUserInput,
@@ -783,7 +793,7 @@ export function useRealtimeVoice() {
   useEffect(() => stop, [stop])
 
   return {
-    supported: Boolean(navigator.mediaDevices?.getUserMedia && window.RTCPeerConnection),
+    supported: Boolean(window.RTCPeerConnection && (mode === 'text' || navigator.mediaDevices?.getUserMedia)),
     status,
     messages,
     error,

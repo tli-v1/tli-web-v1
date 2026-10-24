@@ -1158,7 +1158,7 @@
   place-items: center;
   padding: 1.5rem;
   perspective: 1200px;
-  background: #0f172a;
+  background: transparent;
 }
 
 .hero-chat-overlay__backdrop {
@@ -1169,14 +1169,15 @@
   padding: 0;
   border: 0;
   border-radius: 0;
-  background: rgba(5, 13, 33, 0.7);
-  backdrop-filter: blur(8px);
+  background: rgba(25, 49, 94, 0.22);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
   box-shadow: none;
   animation: hero-overlay-dim-in 420ms ease both;
 }
 
 .hero-chat-overlay__backdrop:hover {
-  background: rgba(5, 13, 33, 0.74);
+  background: rgba(25, 49, 94, 0.22);
   transform: none;
 }
 
@@ -2290,14 +2291,8 @@
 }
 
 @keyframes hero-overlay-dim-in {
-  from {
-    background: rgba(5, 13, 33, 0);
-    backdrop-filter: blur(0);
-  }
-  to {
-    background: rgba(5, 13, 33, 0.7);
-    backdrop-filter: blur(8px);
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes hero-modal-scroll-open {

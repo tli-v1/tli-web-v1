@@ -10,10 +10,13 @@ function Navbar() {
 
   const closeNav = () => setNavOpen(false)
 
+  if (location.pathname.startsWith('/dashboard/cases/')) return null
+
   return (
     <nav className={[
       'navbar',
       isLandingPage ? 'navbar--light' : 'navbar--dark',
+      location.pathname.startsWith('/dashboard/cases/') ? 'navbar--case' : '',
       navOpen ? 'nav-open' : '',
     ].filter(Boolean).join(' ')}>
       <div className="nav-left">

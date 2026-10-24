@@ -13,7 +13,7 @@ export function buildVoiceIntakeDraft(
 
   for (const message of messages) {
     if (message.role === 'assistant') {
-      activeStep = detectStep(message.content) ?? activeStep
+      activeStep = detectIntakeQuestionStep(message.content) ?? activeStep
       continue
     }
 
@@ -27,7 +27,7 @@ export function buildVoiceIntakeDraft(
   return { answers }
 }
 
-function detectStep(message: string): ChatIntakeStep | null {
+export function detectIntakeQuestionStep(message: string): ChatIntakeStep | null {
   const questionMatches = message.match(/[^.!?]*\?/g)
   const focusText = questionMatches?.length
     ? questionMatches[questionMatches.length - 1] ?? message

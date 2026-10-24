@@ -11,16 +11,13 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import RealtimeVoiceIntake from '../RealtimeVoiceIntake'
-import { ChatWidget } from '../ChatWidget/ChatWidget'
 import Footer from '../Footer'
 import HowItWorks from '../HowItWorks'
-import { getSession, onAuthStateChange } from '../../api/auth'
 import {
   trackGoogleEvent,
   trackIntakeModeSelected,
   trackIntakeStarted,
 } from '../../analytics/googleTags'
-import type { User } from '../../types'
 import billboardGraphic from '../../assets/billboard.png'
 import lowSettlementGraphic from '../../assets/low_settlement.png'
 import threeStepGraphic from '../../assets/three_step.png'
@@ -36,7 +33,50 @@ function Landing() {
   const [isHeroPromptFocused, setIsHeroPromptFocused] = useState(false)
   const [initialTextPrompt, setInitialTextPrompt] = useState('')
   const [initialVoicePrompt, setInitialVoicePrompt] = useState('')
-  const [sessionUser, setSessionUser] = useState<User | null>(null)
+
+  useEffect(() => {
+    if (!isHeroPromptFocused || isIntakeOpen) return
+    const viewport = window.visualViewport
+    let frame = 0
+    const keepPromptVisible = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        if (!window.matchMedia('(max-width: 1050px)').matches) return
+        const input = heroPromptRef.current
+        if (!input || document.activeElement !== input) return
+        const bounds = input.form?.getBoundingClientRect()
+        if (!bounds) return
+        // Mobile keyboards shrink/pan the visual viewport without necessarily
+        // resizing the layout viewport. Measure against the visible area.
+        const top = (viewport?.offsetTop ?? 0) + 80
+        const bottom = (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight) - 20
+        const delta = bounds.bottom > bottom
+          ? bounds.bottom - bottom
+          : bounds.top < top ? bounds.top - top : 0
+        if (Math.abs(delta) > 1) window.scrollBy({ top: delta, behavior: 'instant' })
+      })
+    }
+    keepPromptVisible()
+    // Also run after browsers finish their automatic focus/keyboard scrolling.
+    const settled = window.setTimeout(keepPromptVisible, 350)
+    viewport?.addEventListener('resize', keepPromptVisible)
+    viewport?.addEventListener('scroll', keepPromptVisible)
+    window.addEventListener('resize', keepPromptVisible)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.clearTimeout(settled)
+      viewport?.removeEventListener('resize', keepPromptVisible)
+      viewport?.removeEventListener('scroll', keepPromptVisible)
+      window.removeEventListener('resize', keepPromptVisible)
+    }
+  }, [isHeroPromptFocused, isIntakeOpen])
+
+  useEffect(() => {
+    if (!isIntakeOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previousOverflow }
+  }, [isIntakeOpen])
 
   useEffect(() => {
     return () => {
@@ -46,18 +86,6 @@ function Landing() {
     }
   }, [])
 
-  useEffect(() => {
-    let isMounted = true
-    void getSession().then((user) => {
-      if (isMounted) setSessionUser(user)
-    })
-    const unsubscribe = onAuthStateChange(setSessionUser)
-
-    return () => {
-      isMounted = false
-      unsubscribe()
-    }
-  }, [])
 
   useEffect(() => {
     if (!('IntersectionObserver' in window)) {
@@ -388,21 +416,16 @@ function Landing() {
               setInitialTextPrompt('')
             }}
           />
-          <div className="text-intake-modal__chat">
-            <ChatWidget
-              key={`hero-text-intake-${initialTextPrompt || 'empty'}`}
-              user={sessionUser}
-              variant="hero"
-              intakeMode={true}
-              initialUserMessage={initialTextPrompt}
-              voiceEnabled={false}
-              onClose={() => {
-                setIsIntakeOpen(false)
-                setIsIntakeLaunching(false)
-                setInitialTextPrompt('')
-              }}
-            />
-          </div>
+          <RealtimeVoiceIntake
+            key={`hero-text-intake-${initialTextPrompt || 'empty'}`}
+            mode="text"
+            initialUserMessage={initialTextPrompt}
+            onClose={() => {
+              setIsIntakeOpen(false)
+              setIsIntakeLaunching(false)
+              setInitialTextPrompt('')
+            }}
+          />
         </div>
       )}
 
