@@ -617,7 +617,7 @@
 
 .landing-final-cta {
   width: 100%;
-  padding: clamp(5rem, 8vw, 7rem) var(--landing-inline-space);
+  padding: clamp(5rem, 8vw, 7rem) clamp(1rem, 4vw, 3rem);
   background:
     radial-gradient(ellipse 76% 44% at 50% 78%, rgba(172, 205, 250, 0.58), transparent 74%),
     radial-gradient(ellipse 64% 36% at 50% 104%, rgba(115, 165, 232, 0.32), transparent 72%),
@@ -626,7 +626,7 @@
 }
 
 .landing-final-cta__inner {
-  width: min(100%, 1120px);
+  width: min(100%, 1300px);
   margin: 0 auto;
   padding: 0;
   border: 0;
@@ -2923,4 +2923,17 @@
 .landing-final-cta__button:focus-visible {
   outline: 2px solid #1d5ad9;
   outline-offset: 3px;
+}
+
+/* Align the final card grid with the How it works grid at every breakpoint. */
+@media (max-width: 1050px) {
+  .landing-final-cta__story {
+    width: min(100%, 900px);
+    margin-inline: auto;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+@media (max-width: 420px) {
+  .landing-final-cta { padding-inline: 1rem; }
 }

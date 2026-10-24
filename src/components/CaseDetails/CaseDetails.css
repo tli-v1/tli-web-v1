@@ -1768,3 +1768,10 @@ body.case-record-view .navbar { width: calc(100% - clamp(2.5rem, 4vw, 6rem)); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Keep mobile editing readable without automatic input zoom on iOS. */
+@media (max-width: 850px) {
+  .case-detail-page input,
+  .case-detail-page select,
+  .case-detail-page textarea { font-size: 16px; }
+}

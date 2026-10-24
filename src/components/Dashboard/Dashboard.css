@@ -728,3 +728,10 @@ body.dashboard-workspace-view .navbar { display: none; }
   .dashboard-workspace-content { padding: 24px 16px; }
   .dashboard--workspace .cases-section { padding: 16px; }
 }
+
+@media (max-width: 850px) {
+  body.dashboard-workspace-view #root { padding: 0; }
+  .dashboard--workspace .cases-pagination__controls { flex-wrap: wrap; }
+  .dashboard--workspace .cases-pagination__controls span { white-space: nowrap; }
+  .dashboard--workspace .cases-pagination button { min-height: 44px; }
+}
