@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { FolderOpen, LogOut, Plus } from 'lucide-react'
+import Logo from '../../assets/tli_logo.png'
 import { getUserCases } from '../../api/cases'
 import {
   getSession,
@@ -46,6 +48,12 @@ function Dashboard() {
   const [casePage, setCasePage] = useState(1)
   const [caseTotal, setCaseTotal] = useState(0)
   const [profileName, setProfileName] = useState('')
+
+  useEffect(() => {
+    if (!sessionUser) return
+    document.body.classList.add('dashboard-workspace-view')
+    return () => document.body.classList.remove('dashboard-workspace-view')
+  }, [sessionUser])
 
   useEffect(() => {
     let isMounted = true
@@ -359,8 +367,25 @@ function Dashboard() {
   }
 
   return (
-    <main className="dashboard">
-      <section className="card dashboard-card">
+    <main className="dashboard dashboard--workspace">
+      <aside className="dashboard-sidebar" aria-label="Dashboard navigation">
+        <Link to="/" className="dashboard-sidebar__brand">
+          <img src={Logo} alt="" />
+          <span>True Legal Innovations</span>
+        </Link>
+        <nav aria-label="Workspace">
+          <Link to="/dashboard" aria-current="page"><FolderOpen aria-hidden="true" />All cases</Link>
+          <Link to="/"><Plus aria-hidden="true" />Start a new case</Link>
+        </nav>
+        <div className="dashboard-sidebar__account">
+          <button type="button" onClick={handleSignOut} disabled={signingOut}>
+            <span>{signingOut ? 'Signing out...' : 'Sign out'}</span>
+            <LogOut aria-hidden="true" />
+          </button>
+          {signOutError && <p role="alert">{signOutError}</p>}
+        </div>
+      </aside>
+      <section className="dashboard-workspace-content">
         <header className="dashboard-head">
           <div>
             <p className="eyebrow">Welcome back</p>
@@ -371,11 +396,6 @@ function Dashboard() {
             <p className="lead">
               Track the matters you&apos;ve submitted and pick up where you left off.
             </p>
-          </div>
-          <div className="dashboard-actions">
-            <button type="button" className="btn secondary" onClick={handleSignOut} disabled={signingOut}>
-              {signingOut ? 'Signing out...' : 'Sign out'}
-            </button>
           </div>
         </header>
 
@@ -403,7 +423,7 @@ function Dashboard() {
                     <th scope="col">Case snapshot</th>
                     <th scope="col">Submitted</th>
                     <th scope="col">Documents</th>
-                    <th scope="col">Agreements</th>
+                    <th scope="col">Offers</th>
                     <th scope="col">Status</th>
                     <th scope="col"><span className="sr-only">Actions</span></th>
                   </tr>
@@ -423,7 +443,7 @@ function Dashboard() {
                         </td>
                         <td data-label="Submitted">{formatDisplayDate(item.created_at)}</td>
                         <td data-label="Documents">{item.doc_count}</td>
-                        <td data-label="Agreements">{item.agreement_count}</td>
+                        <td data-label="Offers">{item.agreement_count}</td>
                         <td data-label="Status"><span className="status-pill">{formatCaseStatus(item.status)}</span></td>
                         <td className="case-table__action-cell">
                           <Link
@@ -467,7 +487,6 @@ function Dashboard() {
             </nav>
           )}
         </section>
-        {signOutError && <p className="error">{signOutError}</p>}
       </section>
     </main>
   )
